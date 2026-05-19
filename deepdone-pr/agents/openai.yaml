@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone PR"
+  short_description: "Prepare or inspect a platform-neutral PR/MR for DeepDone work"
+  default_prompt: |
+    Use $deepdone-pr.
+    Prepare a PR or merge request draft for the current DeepDone work.
+    Create or push only when I explicitly ask and repository tooling is clear.

@@ -1,0 +1,6 @@
+interface:
+  display_name: "DeepDone Commit"
+  short_description: "Prepare or create a safe DeepDone git commit"
+  default_prompt: |
+    Use $deepdone-commit.
+    Prepare a commit candidate for the current DeepDone work. Commit automatically when I ask for commit or a DeepDone supervisor invokes commit mode.

@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Review"
+  short_description: "Review local diff for correctness and integration risk"
+  default_prompt: |
+    Use $deepdone-review.
+    Review the current DeepDone diff skeptically.
+    Report findings first, update review state, and stop on product or architecture judgment.

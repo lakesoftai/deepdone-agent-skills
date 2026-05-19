@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Implement"
+  short_description: "Implement exactly one DeepDone milestone"
+  default_prompt: |
+    Use $deepdone-implement.
+    Implement only the next milestone from the active DeepDone ledger.
+    Keep scope tight, verify narrowly, and update the ledger with the new truth.

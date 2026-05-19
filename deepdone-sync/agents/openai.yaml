@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Sync"
+  short_description: "Reconcile DeepDone ledger with repository reality"
+  default_prompt: |
+    Use $deepdone-sync.
+    Reconstruct current DeepDone state from roadmap, active ledger, git status, and verification truth.
+    Set one exact next action.

@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Fixup"
+  short_description: "Fix accepted local review findings and update DeepDone ledger"
+  default_prompt: |
+    Use $deepdone-fixup.
+    Fix only accepted local review findings from the current DeepDone work.
+    Stop if prioritization, architecture, product behavior, security, or broad refactor judgment is needed.

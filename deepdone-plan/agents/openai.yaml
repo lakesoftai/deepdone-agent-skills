@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Plan"
+  short_description: "Classify scope and create minimal DeepDone state"
+  default_prompt: |
+    Use $deepdone-plan.
+    Classify this work as small task, single epic, or multi-epic initiative.
+    Create only the minimum durable state needed to start safely.

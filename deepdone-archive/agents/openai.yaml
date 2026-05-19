@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Archive"
+  short_description: "Archive completed DeepDone epic state after merge or release"
+  default_prompt: |
+    Use $deepdone-archive.
+    Archive the completed DeepDone epic only when I provide a merge or release reference.
+    Update roadmap pointers and preserve post-merge verification truth.

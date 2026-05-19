@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Advance"
+  short_description: "Advance roadmap to the next queued epic"
+  default_prompt: |
+    Use $deepdone-advance.
+    Advance the current DeepDone roadmap only if the active epic is complete or no active epic exists.
+    Create exactly one new active epic ledger.

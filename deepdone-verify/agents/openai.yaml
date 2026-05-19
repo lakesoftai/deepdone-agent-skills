@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Verify"
+  short_description: "Run scoped checks and log structured verification"
+  default_prompt: |
+    Use $deepdone-verify.
+    Run the smallest convincing checks for the current DeepDone changes.
+    Log each command with result: pass, fail, or blocked.

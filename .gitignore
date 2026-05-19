@@ -1,0 +1,52 @@
+# macOS / filesystem
+.DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python caches and local envs
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Test / coverage / type-check caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Build / packaging outputs
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Local DeepDone runtime state created in target repos
+.deepdone/
+notes/epics/
+notes/archive/epics/
+notes/roadmap.md
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+tmp/
+temp/

@@ -1,0 +1,7 @@
+interface:
+  display_name: "DeepDone Decide"
+  short_description: "Research and record one technical decision"
+  default_prompt: |
+    Use $deepdone-decide.
+    Resolve one specific technical unknown for the current DeepDone milestone.
+    Record evidence, options, decision, and consequences in the active ledger.

@@ -1,0 +1,9 @@
+interface:
+  display_name: "DeepDone Orchestrate"
+  short_description: "Smart Codex UI supervisor for DeepDone workflows"
+  default_prompt: |
+    Use $deepdone-orchestrate.
+    Requirements:
+    Continue the current DeepDone workflow from the repository, roadmap, and active epic ledger.
+    Mode: one-step.
+    Commit automatically only when I choose Mode: until-commit or Mode: end-to-end, or explicitly ask for a commit.

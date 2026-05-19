@@ -1,0 +1,2 @@
+{"state_before":"ready_to_implement","skill_invoked":"deepdone-implement","state_after":"needs_verification","files_touched":["src/auth/middleware.py","tests/test_auth_errors.py"],"stop_reason":null}
+{"state_before":"needs_verification","skill_invoked":"deepdone-verify","state_after":"needs_review","files_touched":["notes/epics/2026-05-18-auth-error-cleanup.md"],"stop_reason":null}
