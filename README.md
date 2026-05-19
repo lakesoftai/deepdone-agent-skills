@@ -1,6 +1,8 @@
-# DeepDone Skills by Guntars Veigulis
+# DeepDone Skills
 
 DeepDone is a small skill package for agent-driven software work. It keeps long work recoverable by using one roadmap, one active epic ledger, and narrow workflow skills.
+
+Works best with Codex.
 
 ## Start Here
 
@@ -68,100 +70,6 @@ The supervisor routes between skills. Direct child skill invocation is useful on
 - `deepdone-commit`: prepares or creates a gated local commit
 - `deepdone-pr`: prepares platform-neutral PR/MR drafts and inspects CI for existing PRs
 - `deepdone-archive`: archives completed epic state after explicit merge or release reference
-
-## Durable Files
-
-Roadmap path:
-
-```text
-notes/roadmap.md
-```
-
-Required roadmap sections:
-
-```md
-# <Initiative title>
-
-## Summary
-
-## Constraints
-
-## Cross-Cutting Decisions
-
-## Epic Queue
-
-## Active Epic
-
-## Status
-```
-
-Use `## Cross-Cutting Decisions` only for choices that constrain more than one epic.
-
-Epic ledger path:
-
-```text
-notes/epics/YYYY-MM-DD-<slug>.md
-```
-
-Archived epic ledger path:
-
-```text
-notes/archive/epics/YYYY-MM-DD-<slug>.md
-```
-
-Required epic ledger sections:
-
-```md
-# <Epic title>
-
-## Summary
-
-## Constraints
-
-## Milestones
-
-## Decisions
-
-## Verification Log
-
-## Open Loops
-
-## Next Action
-
-## Status
-```
-
-Verification entries must use structured markers:
-
-```md
-- command: `just test api-auth`
-  result: pass
-  notes: focused auth test passed
-```
-
-Allowed `result` values: `pass`, `fail`, `blocked`.
-
-Review writeback should include:
-
-```md
-- review-result: pass
-```
-
-Allowed `review-result` values: `pass`, `fail`, `blocked`.
-
-Loop-mode supervisor runs may also write an audit log:
-
-```text
-.deepdone/runs/YYYYMMDD-HHMMSS.jsonl
-```
-
-Each line records state before, child skill invoked, state after, touched files, and stop reason.
-
-Post-commit artifacts:
-
-- PR/MR draft body follows [examples/pr-body.md](examples/pr-body.md).
-- Archived ledgers move from `notes/epics/` to `notes/archive/epics/`.
-- Roadmaps should update completed epic `ledger:` pointers to archived paths.
 
 ## Safety
 
