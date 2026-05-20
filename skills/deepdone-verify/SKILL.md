@@ -1,5 +1,5 @@
 ---
-name: DeepDone Verify
+name: deepdone-verify
 slug: deepdone-verify
 description: Verify changes with smallest relevant checks first, widen only when shared impact requires it, and log exact commands and outcomes. Use before claiming a milestone or task is done.
 ---

@@ -1,8 +1,29 @@
 # DeepDone Skills
 
-DeepDone is a small skill package for agent-driven software work. It keeps long work recoverable by using one roadmap, one active epic ledger, and narrow workflow skills.
+DeepDone is a skill package for agent-driven software work. Supports single step or fully automatic end-to-end implementation of your
+requirements, from planning to pull request. 
 
-Works best with Codex.
+It keeps long work recoverable by using one roadmap, one active epic ledger, and narrow workflow skills.
+
+## Installation
+
+Install all DeepDone skills with the skills CLI:
+
+```bash
+npx skills add lakesoftai/deepdone-agent-skills --skill '*'
+```
+
+Install globally:
+
+```bash
+npx skills add lakesoftai/deepdone-agent-skills --skill '*' -g
+```
+
+Use `-a` to install for a specific agent :
+
+```bash
+npx skills add lakesoftai/deepdone-agent-skills --skill '*' -a codex
+```
 
 ## Start Here
 
@@ -20,7 +41,6 @@ or:
 Use $deepdone-orchestrate to implement these requirements end to end: @some-requirements.md
 ```
 
-
 Useful modes:
 
 - `one-step`: do one transition, then stop
@@ -30,7 +50,7 @@ Useful modes:
 - `until-review`: run through review
 - `until-commit-candidate`: prepare commit candidate only
 - `until-commit`: create local commit after gates pass
-- `end-to-end`: full intake to commit, capped at 60 child calls
+- `end-to-end`: full intake to local commit, bounded by safety gates
 
 Post-commit work uses direct skills:
 
@@ -47,18 +67,20 @@ requirements -> plan -> sync -> advance -> decide -> implement -> verify -> revi
 
 Loop path: after review, use `fixup`, then verify and review again as needed.
 
-The supervisor routes between skills. Direct child skill invocation is useful only when you already know the exact workflow stage.
+The supervisor routes between skills. Direct child skill invocation is useful only when you already know the exact
+workflow stage.
 
 `pr` and `archive` are conservative post-commit steps:
 
 - PR/MR drafting is default and platform-neutral.
 - PR/MR creation needs explicit approval, clear remote, target branch, branch publish state, and available repo tooling.
-- Archive needs explicit request or supervisor context with merge commit, PR/MR URL, release tag, or equivalent reference.
+- Archive needs explicit request or supervisor context with merge commit, PR/MR URL, release tag, or equivalent
+  reference.
 - Push, merge, deploy, and archive are never implicit.
 
 ## Skills
 
-- `deepdone-orchestrate`: supervises routing, budgets, and safety gates
+- `deepdone-orchestrate`: supervises routing and safety gates
 - `deepdone-plan`: classifies scope and creates roadmap or epic ledger
 - `deepdone-sync`: reconciles ledger, code, and git state after interruption
 - `deepdone-advance`: moves a roadmap from completed active epic to next queued epic

@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "deepdone-orchestrate" / "scripts" / "inspect_deepdone_state.py"
+SCRIPT = ROOT / "skills" / "deepdone-orchestrate" / "scripts" / "inspect_deepdone_state.py"
 
 
 def load_inspect_deepdone_state():

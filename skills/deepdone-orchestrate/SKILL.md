@@ -1,7 +1,7 @@
 ---
-name: DeepDone Orchestrate
+name: deepdone-orchestrate
 slug: deepdone-orchestrate
-description: Supervise a DeepDone workflow in Codex UI from requirements intake through roadmap advancement, implementation, verification, review, review-fix, and commit preparation. Use when the user provides requirements, asks to continue DeepDone work, or wants a bounded smart-agent automation loop.
+description: Supervise a DeepDone workflow from requirements intake through roadmap advancement, implementation, verification, review, review-fix, and commit preparation. Use when the user provides requirements, asks to continue DeepDone work, or wants a bounded smart-agent automation loop.
 ---
 
 # DeepDone Orchestrate
@@ -30,20 +30,20 @@ description: Supervise a DeepDone workflow in Codex UI from requirements intake 
 
 ### Modes
 
-| Mode | Max child calls | Commits? | Description |
-|---|---|---|---|
-| `one-step` (default) | 1 | No | One transition, then stop |
-| `inspect-only` | 0 | No | Classify state, no edits |
-| `until-milestone` | 5 | No | Complete active milestone |
-| `until-epic` | 20 | No | Complete active epic (no commit) |
-| `until-review` | 25 | No | Run through review |
-| `until-commit-candidate` | 30 | No | Prepare candidate, don't commit |
-| `until-commit` | 30 | Yes | Create commit |
-| `end-to-end` | 60 | Yes | Full intake→commit pipeline |
+| Mode | Commits? | Continue until |
+|---|---|---|
+| `one-step` (default) | No | One transition completes |
+| `inspect-only` | No | State is classified without edits |
+| `until-milestone` | No | Active milestone is verified, blocked, or needs the user |
+| `until-epic` | No | Active epic is reviewed, blocked, or needs the user |
+| `until-review` | No | Review completes, produces findings, blocks, or needs the user |
+| `until-commit-candidate` | No | Commit candidate is ready, blocked, or needs the user |
+| `until-commit` | Yes | Commit is created, blocked, or needs the user |
+| `end-to-end` | Yes | Local commit completes, blocks, or needs the user |
 
 ### Hard Stops
 
-Stop immediately on: `.deepdone/STOP`, ambiguous roadmap/ledger, roadmap-ledger disagreement, unexpected dirty files, unclear milestone, missing acceptance criteria, unverifiable risk, review findings needing prioritization, child skill blocked, scope cross, loop budget exhausted.
+Stop immediately on: `.deepdone/STOP`, ambiguous roadmap/ledger, roadmap-ledger disagreement, unexpected dirty files, unclear milestone, missing acceptance criteria, unverifiable risk, review findings needing prioritization, child skill blocked, scope cross, or no progress.
 
 Never without explicit approval: push, merge, deploy, destructive git, production mutation, secret modification, data deletion, paid external service, archive completed state, `git add .`.
 
@@ -55,7 +55,7 @@ User instruction → `.deepdone/STOP` → `git status` → branch → `git diff`
 
 ## Purpose
 
-Act as the supervising agent for a DeepDone workflow inside Codex UI.
+Act as the supervising agent for a DeepDone workflow inside an agent UI.
 
 You are a smart workflow manager, not a brittle script and not an uncontrolled autopilot.
 
@@ -67,7 +67,7 @@ Your job is to:
 4. choose the next safe DeepDone step,
 5. invoke exactly the right child skill,
 6. interpret what happened,
-7. continue only inside the requested mode and budget,
+7. continue only inside the requested mode and safety gates,
 8. stop when human judgment is needed.
 
 The orchestration intelligence lives in this skill. Helper scripts may improve situational awareness, but they do not replace judgment.
@@ -169,8 +169,6 @@ Allowed child skills:
 - `$deepdone-implement`
 - `$deepdone-verify`
 
-Maximum child calls: 5.
-
 ### until-epic
 
 Continue until the active epic is complete, blocked, or needs the user.
@@ -184,15 +182,11 @@ Allowed child skills:
 - `$deepdone-review`
 - `$deepdone-fixup`
 
-Maximum child calls: 20.
-
 Do not commit in this mode unless the current user request explicitly includes commit.
 
 ### until-review
 
 Continue until review completes or produces findings.
-
-Maximum child calls: 25.
 
 Stop on findings that require prioritization.
 
@@ -200,21 +194,15 @@ Stop on findings that require prioritization.
 
 Continue until a commit candidate is ready.
 
-Maximum child calls: 30.
-
 Do not commit.
 
 ### until-commit
 
 Continue until a commit is created. This mode itself is commit authorization for the current run.
 
-Maximum child calls: 30.
-
 Never push.
 
 ### end-to-end
-
-Maximum child calls: 60.
 
 End-to-end means:
 
@@ -231,6 +219,19 @@ End-to-end means:
 11. advance roadmap only when current epic is complete and this was requested or naturally follows the user's requirement.
 
 End-to-end still has gates. It is not unlimited autonomy.
+
+## Progress Safety Gates
+
+Loop modes are bounded by progress and risk, not by numeric quotas.
+
+Always stop if:
+
+- the same state repeats without new evidence,
+- the same child skill would run twice for the same reason,
+- verification fails after one focused fix attempt,
+- the current diff grows outside the active task,
+- the next step depends on product, architecture, security, or data-risk judgment,
+- the run cannot explain why another child-skill invocation is safer than stopping.
 
 ## Hard Safety Rules
 
@@ -262,7 +263,7 @@ Always stop if:
 - review findings require user prioritization,
 - a child skill reports blocked state,
 - a child skill crosses scope,
-- loop budget is exhausted.
+- a loop makes no material progress.
 
 ## Source of Truth
 
@@ -295,7 +296,7 @@ For loop modes, append one JSON object per child-skill transition to:
 ```
 
 Create `.deepdone/runs/` if needed. Use one file per supervisor run.
-If helper script `deepdone-orchestrate/scripts/append_run_audit.py` exists, use it to append entries.
+If helper script `scripts/append_run_audit.py` exists, use it to append entries.
 
 Each line must include:
 

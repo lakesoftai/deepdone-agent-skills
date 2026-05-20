@@ -1,5 +1,5 @@
 ---
-name: DeepDone Commit
+name: deepdone-commit
 slug: deepdone-commit
 description: Prepare or create a safe focused git commit for completed DeepDone work after ledger, verification, and review gates pass. Use when the user asks for a commit candidate, asks to commit, or a supervisor mode authorizes commit.
 ---
@@ -84,7 +84,7 @@ Examples:
 - local database dumps
 - generated build artifacts not normally committed
 - `.deepdone/commit-candidate.md`
-- local Codex, editor, or orchestration scratch files
+- local agent, editor, or orchestration scratch files
 
 ## Commit Harness
 

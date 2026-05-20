@@ -1,5 +1,5 @@
 ---
-name: DeepDone Fixup
+name: deepdone-fixup
 slug: deepdone-fixup
 description: Triage and fix accepted local code review findings from a DeepDone workflow, verify the fix, update the epic ledger, and stop when findings require product or architecture judgment.
 ---
@@ -10,7 +10,7 @@ description: Triage and fix accepted local code review findings from a DeepDone 
 
 Fix review findings without turning review into a new unbounded implementation phase.
 
-Use this skill after `$deepdone-review` or Codex UI review has produced findings.
+Use this skill after `$deepdone-review` or an agent UI review has produced findings.
 
 This skill is allowed to fix findings only when they are:
 
@@ -29,7 +29,7 @@ Prefer explicit review findings from the user or a review output file.
 
 If no findings are provided, inspect likely sources:
 
-1. latest Codex UI review comments if visible in the thread,
+1. latest agent UI review comments if visible in the thread,
 2. active epic ledger `Open Loops`,
 3. recent review notes in `## Decisions` or `## Verification Log`,
 4. git diff and recent conversation context.

@@ -1,5 +1,5 @@
 ---
-name: DeepDone Archive
+name: deepdone-archive
 slug: deepdone-archive
 description: Archive a completed DeepDone epic after explicit user request or clear supervisor-provided merge/release reference, update roadmap pointers, and preserve post-merge verification truth.
 ---

@@ -1,5 +1,5 @@
 ---
-name: DeepDone Plan
+name: deepdone-plan
 slug: deepdone-plan
 description: Classify incoming work as a small task, a single epic, or a multi-epic initiative. Create only the minimum durable state needed to start execution cleanly. Use when starting non-trivial work, ingesting a requirements doc, or when task scope is still fuzzy.
 ---

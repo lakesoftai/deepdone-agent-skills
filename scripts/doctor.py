@@ -29,9 +29,9 @@ SKILLS = [
 ]
 
 HELPER_SCRIPTS = [
-    "deepdone-commit/scripts/commit_progress.py",
-    "deepdone-orchestrate/scripts/append_run_audit.py",
-    "deepdone-orchestrate/scripts/inspect_deepdone_state.py",
+    "skills/deepdone-commit/scripts/commit_progress.py",
+    "skills/deepdone-orchestrate/scripts/append_run_audit.py",
+    "skills/deepdone-orchestrate/scripts/inspect_deepdone_state.py",
 ]
 
 EXAMPLES = [
@@ -68,7 +68,7 @@ def frontmatter(text: str) -> dict[str, str]:
 
 def check_skill_metadata(errors: list[str]) -> None:
     for skill in SKILLS:
-        skill_dir = ROOT / skill
+        skill_dir = ROOT / "skills" / skill
         skill_md = skill_dir / "SKILL.md"
         text = read_text(skill_md)
         if not text:
@@ -79,6 +79,8 @@ def check_skill_metadata(errors: list[str]) -> None:
         for field in ("name", "slug", "description"):
             if not meta.get(field):
                 errors.append(f"{skill}: missing frontmatter field {field}")
+        if meta.get("name") and meta["name"] != skill:
+            errors.append(f"{skill}: name does not match directory name")
         if meta.get("slug") and meta["slug"] != skill:
             errors.append(f"{skill}: slug does not match directory name")
 

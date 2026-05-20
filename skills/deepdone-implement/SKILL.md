@@ -1,7 +1,7 @@
 ---
-name: DeepDone Implement
+name: deepdone-implement
 slug: deepdone-implement
-description: Execute only the next milestone from the active epic ledger, keep scope tight, and update progress, verification, open loops, and next action as you go. If the task is intentionally small and has no ledger, treat the thread goal as one compact milestone. Trigger question: "Am I about to write code for the next milestone?"
+description: Execute only the next milestone from the active epic ledger, keep scope tight, and update progress, verification, open loops, and next action as you go. If the task is intentionally small and has no ledger, treat the thread goal as one compact milestone.
 ---
 
 # DeepDone Implement

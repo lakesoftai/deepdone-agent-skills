@@ -1,6 +1,6 @@
 interface:
   display_name: "DeepDone Orchestrate"
-  short_description: "Smart Codex UI supervisor for DeepDone workflows"
+  short_description: "Smart agent UI supervisor for DeepDone workflows"
   default_prompt: |
     Use $deepdone-orchestrate.
     Requirements:

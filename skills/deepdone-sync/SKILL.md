@@ -1,7 +1,7 @@
 ---
-name: DeepDone Sync
+name: deepdone-sync
 slug: deepdone-sync
-description: Reconstruct active work from the epic ledger, and from the roadmap when one exists, summarize true current state, identify drift, and set one exact next action. Use after interruption, handoff, or context loss. Trigger question: "Do I trust that my ledger matches reality?"
+description: Reconstruct active work from the epic ledger, and from the roadmap when one exists, summarize true current state, identify drift, and set one exact next action. Use after interruption, handoff, or context loss.
 ---
 
 # DeepDone Sync

@@ -1,7 +1,7 @@
 ---
-name: DeepDone Advance
+name: deepdone-advance
 slug: deepdone-advance
-description: Move a multi-epic initiative from the completed active epic to the next queued epic. Update the roadmap, create exactly one new active epic ledger, and keep future epics queued. Use only when the current active epic is complete or when a roadmap exists with no active epic yet. Trigger question: "Did I just finish the current epic?"
+description: Move a multi-epic initiative from the completed active epic to the next queued epic. Update the roadmap, create exactly one new active epic ledger, and keep future epics queued. Use only when the current active epic is complete or when a roadmap exists with no active epic yet.
 ---
 
 # DeepDone Advance

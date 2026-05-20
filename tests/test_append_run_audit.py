@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "deepdone-orchestrate" / "scripts" / "append_run_audit.py"
+SCRIPT = ROOT / "skills" / "deepdone-orchestrate" / "scripts" / "append_run_audit.py"
 
 
 def load_append_run_audit():

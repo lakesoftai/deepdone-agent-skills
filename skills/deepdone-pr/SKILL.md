@@ -1,5 +1,5 @@
 ---
-name: DeepDone PR
+name: deepdone-pr
 slug: deepdone-pr
 description: Prepare a platform-neutral pull or merge request draft, optionally create it only with explicit approval and clear repository tooling, and inspect CI for an existing PR when asked.
 ---

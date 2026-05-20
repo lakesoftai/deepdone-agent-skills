@@ -1,5 +1,5 @@
 ---
-name: DeepDone Review
+name: deepdone-review
 slug: deepdone-review
 description: Perform skeptical local code review focused on correctness, regressions, security, overscope, and missing tests, then record findings and residual risk. Use before final integration or handoff.
 ---
