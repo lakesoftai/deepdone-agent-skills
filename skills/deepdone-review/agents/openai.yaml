@@ -5,3 +5,6 @@ interface:
     Use $deepdone-review.
     Review the current DeepDone diff skeptically.
     Report findings first, update review state, and stop on product or architecture judgment.
+
+policy:
+  allow_implicit_invocation: false

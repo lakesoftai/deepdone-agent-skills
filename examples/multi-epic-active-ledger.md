@@ -35,6 +35,12 @@ Create minimal offline notes app shell for the active roadmap epic.
   result: blocked
   notes: command discovery not run yet
 
+## Review
+
+- reviewed-at: not-run
+  result: pending
+  notes: implementation not reviewed yet
+
 ## Open Loops
 
 - none

@@ -194,31 +194,31 @@ For an active epic, use exactly these headings:
 
 ## Verification Log
 
-Use structured result markers for every verification entry:
-
-```md
-- command: `just test api-auth`
-  result: pass
-  notes: focused auth test passed
-- command: `uv run pytest tests/test_auth.py`
-  result: fail
-  notes: login fixture broken after schema change
-- command: `just lint`
-  result: blocked
-  notes: no `justfile` in repo
-```
-
-Allowed `result` values:
-
-- `pass`
-- `fail`
-- `blocked`
+## Review
 
 ## Open Loops
 
 ## Next Action
 
 ## Status
+```
+
+Use structured verification entries:
+
+```md
+- command: `just test api-auth`
+  result: pass
+  notes: focused auth test passed
+```
+
+Allowed verification results: `pass`, `fail`, `blocked`.
+
+Initialize review state:
+
+```md
+- reviewed-at: not-run
+  result: pending
+  notes: implementation not reviewed yet
 ```
 
 ## Milestone Rules
@@ -244,8 +244,7 @@ Preferred format:
 
 ## Plan Mode Policy
 
-Use your runtime's planning mode for this skill when available unless the task is obviously a small local task.
-If no planning mode exists, write a compact plan and stop before creating durable state.
+Use your runtime's planning mode when available unless the task is obviously small. If no planning mode exists, perform the same compact classification in normal execution mode and continue when the user or supervisor requested execution.
 Focus planning on:
 - scope classification
 - whether this is small task, single epic, or multi-epic initiative
@@ -263,7 +262,7 @@ Focus planning on:
    - move straight to implementation planning
 5. If single epic:
    - create one epic ledger
-   - fill Summary, Constraints, Milestones, Next Action, Status
+   - fill Summary, Constraints, Milestones, Review, Next Action, Status
 6. If multi-epic initiative:
    - create one roadmap file
    - derive a short epic queue from the source material
@@ -277,6 +276,7 @@ Focus planning on:
 10. Set Status:
    - roadmap: `active`
    - active epic: `active`
+11. Initialize Review with `reviewed-at: not-run`, `result: pending`, and a short note.
 
 ## Decomposition Guidance
 

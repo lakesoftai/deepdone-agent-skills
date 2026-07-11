@@ -22,9 +22,9 @@ It must not start parallel active epics unless the user explicitly asks for para
 
 Before advancing, confirm one of these is true:
 
-1. roadmap exists and `Active Epic.state` is `complete-pending-advance`, or
+1. roadmap exists, `Active Epic.state` is `complete-pending-advance`, all required milestones are complete, and latest review result is `pass`, or
 2. roadmap exists and there is no active epic yet, or
-3. roadmap exists and current active epic ledger is clearly complete even if roadmap state is stale
+3. roadmap exists and current active epic ledger is clearly complete with latest review result `pass`, even if roadmap state is recoverably stale
 
 If the active epic is not truly complete, stop and explain why advancing is premature.
 
@@ -45,6 +45,7 @@ If an active epic ledger exists, read:
 - `Milestones`
 - `Decisions`
 - `Verification Log`
+- `Review`
 - `Open Loops`
 - `Status`
 
@@ -90,6 +91,8 @@ Use the standard epic headings:
 
 ## Verification Log
 
+## Review
+
 ## Open Loops
 
 ## Next Action
@@ -104,6 +107,7 @@ Populate it with:
 - 3 to 7 verifiable milestones
 - one exact next action
 - `Status: active`
+- initial review entry with `reviewed-at: not-run`, `result: pending`, and a short note
 
 Carry forward only what the next epic actually needs:
 
@@ -115,16 +119,18 @@ Carry forward only what the next epic actually needs:
 
 Do not copy old verification logs or stale open loops that no longer matter.
 
+Commit is optional before advance. Expected reviewed changes may remain dirty. Stop for unrelated, unreviewed, or ambiguous dirty files.
+
 ## Plan Mode Policy
 
 Use your runtime's planning mode by default when available.
 Advancing a roadmap requires confirming the next epic is still the right execution unit, dependencies are satisfied, and sequencing still fits repo reality.
-If no planning mode exists, write a compact advancement plan and stop before edits.
+If no planning mode exists, perform the same compact checks in normal execution mode and continue when advance was explicitly requested or selected by the supervisor.
 
 ## Workflow
 
 1. Locate the roadmap.
-2. Verify the current active epic is complete, or confirm there is no active epic yet.
+2. Verify the current active epic is complete with latest review result `pass`, or confirm there is no active epic yet.
 3. Mark the completed epic entry `[x]` if needed.
 4. Select the next queued epic whose dependencies are satisfied.
 5. Create exactly one new epic ledger for that epic.
@@ -149,7 +155,7 @@ If no planning mode exists, write a compact advancement plan and stop before edi
 Return:
 
 - exact roadmap path
-- previous active epic and completion status
+- previous active epic, exact ledger path, review result, completion status, and whether reviewed changes remain uncommitted
 - new active epic, or roadmap-complete verdict
 - exact new ledger path if created
 - milestone list with acceptance checks for the new active epic

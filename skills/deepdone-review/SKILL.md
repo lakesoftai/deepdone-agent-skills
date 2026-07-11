@@ -40,20 +40,43 @@ Do not bury real blockers as nits.
 - include clear fix direction for each actionable finding
 - separate product or architecture questions from code findings
 
+## Review Scope
+
+Inspect the complete local change set before issuing a result:
+
+- `git status --short --untracked-files=all`
+- unstaged diff
+- staged diff
+- contents of relevant untracked files
+- active milestone, constraints, verification evidence, and AGENTS instructions
+
+Review only active-scope changes. Stop if unrelated dirty files make ownership unclear. If no local changes exist but the milestone claims implementation in commits, require an explicit review base instead of guessing.
+
 ## Ledger Writeback
 
 When epic ledger exists:
 
-- summarize accepted findings or clean review result under `## Decisions` or `## Open Loops`
-- include one structured line: `review-result: pass|fail|blocked`
+- ensure `## Review` exists after `## Verification Log`
+- append one entry with `reviewed-at`, `result`, and `notes`; latest entry wins
+- keep accepted findings or unresolved questions in `Open Loops`
 - note residual risks plainly
-- update `Status` if review blocks integration
 
-Set `review-result` as:
+Set review `result` as:
 
 - `pass`: no blocking or strong unresolved findings
 - `fail`: review found local defects that should be fixed before commit
 - `blocked`: review found product, architecture, security, migration, or prioritization judgment that needs user input
+
+On `pass`:
+
+- mark ledger `Status` as `complete`
+- if roadmap exists, change current queue item from `[-]` to `[x]`
+- set roadmap `Active Epic.state` to `complete-pending-advance`
+- set `Next Action` from supervisor mode: for `until-epic`, advance only when a roadmap has queued or finalization work, otherwise await the next explicit workflow request; use commit for commit-authorized modes and candidate for candidate mode
+
+On `fail`, keep epic and roadmap active and set `Next Action` to `$deepdone-fixup`.
+
+On `blocked`, mark epic and roadmap blocked and state exact unblock condition.
 
 ## Surface Checklists
 
@@ -93,13 +116,13 @@ Set `review-result` as:
 
 ## Workflow
 
-1. Read diff and recent verification results.
+1. Read full review scope and recent verification results.
 2. Check whether implementation matches stated milestone.
 3. Look for behavior regressions and hidden coupling.
 4. Inspect auth, data, config, and migration surfaces with extra skepticism.
 5. Check whether tests prove intended behavior.
 6. Classify each finding by severity.
-7. Write `review-result` into the active ledger when one exists.
+7. Append structured Review entry and update lifecycle state.
 8. Report findings first.
 
 ## Output

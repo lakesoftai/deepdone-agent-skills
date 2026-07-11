@@ -43,6 +43,7 @@ LOCAL_ONLY_PATTERNS = [
 
 VERIFICATION_RESULT_RE = re.compile(r"(^|\s|[-*`])result:\s*(pass|fail|blocked)\b", re.IGNORECASE)
 REVIEW_RESULT_RE = re.compile(r"(^|\s|[-*`])review-result:\s*(pass|fail|blocked)\b", re.IGNORECASE)
+REVIEW_SECTION_RESULT_RE = re.compile(r"(^|\s|[-*`])result:\s*(pending|pass|fail|blocked)\b", re.IGNORECASE)
 REVIEW_BLOCKER_RE = re.compile(
     r"\b(blocked|blocking|unresolved|deferred|needs user|needs_user|failed|fail)\b",
     re.IGNORECASE,
@@ -127,7 +128,33 @@ def status_is_active(status: str) -> bool:
     return False
 
 
-def parse_active_ledger(root: Path) -> tuple[str | None, str | None, str | None, str]:
+def status_is_complete(status: str) -> bool:
+    for raw_line in status.splitlines() or [status]:
+        line = raw_line.strip().lower()
+        line = re.sub(r"^[-*]\s*", "", line)
+        if ":" in line:
+            key, value = [part.strip() for part in line.split(":", 1)]
+            if key in {"status", "state"} and value == "complete":
+                return True
+        if line == "complete":
+            return True
+    return False
+
+
+def ledger_title(text: str) -> str | None:
+    match = re.search(r"^#\s+(.+?)\s*$", text, flags=re.MULTILINE)
+    return match.group(1).strip() if match else None
+
+
+def parse_active_ledger(root: Path, explicit_ledger: str | None = None) -> tuple[str | None, str | None, str | None, str]:
+    if explicit_ledger:
+        try:
+            ledger_path = ensure_repo_path(root, explicit_ledger)
+        except ValueError:
+            return None, explicit_ledger, None, ""
+        text = read_text(ledger_path)
+        return ledger_title(text), explicit_ledger, None, text
+
     roadmap_path = root / "notes" / "roadmap.md"
     roadmap = read_text(roadmap_path)
     if roadmap:
@@ -153,19 +180,41 @@ def parse_active_ledger(root: Path) -> tuple[str | None, str | None, str | None,
     epics = root / "notes" / "epics"
     if epics.exists():
         candidates: list[Path] = []
+        completed: list[Path] = []
         for path in sorted(epics.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
             text = read_text(path)
             if status_is_active(section(text, "Status")):
                 candidates.append(path)
+            elif status_is_complete(section(text, "Status")) and review_results(review_lines(text)) == ["pass"]:
+                completed.append(path)
         if len(candidates) == 1:
             text = read_text(candidates[0])
-            return None, str(candidates[0].relative_to(root)), None, text
+            return ledger_title(text), str(candidates[0].relative_to(root)), None, text
+        if not candidates and len(completed) == 1:
+            text = read_text(completed[0])
+            return ledger_title(text), str(completed[0].relative_to(root)), None, text
     return None, None, None, ""
 
 
 def latest_lines(text: str, section_name: str, limit: int = 8) -> list[str]:
     lines = [line.strip() for line in section(text, section_name).splitlines() if line.strip()]
     return lines[-limit:]
+
+
+def latest_verification_lines(text: str, limit: int = 3) -> list[str]:
+    entries: list[list[str]] = []
+    current: list[str] = []
+    for raw_line in section(text, "Verification Log").splitlines():
+        line = raw_line.strip()
+        if line.startswith("- command:"):
+            if current:
+                entries.append(current)
+            current = [line]
+        elif line and current:
+            current.append(line)
+    if current:
+        entries.append(current)
+    return [line for entry in entries[-limit:] for line in entry]
 
 
 def current_milestone(ledger_text: str) -> str | None:
@@ -184,8 +233,10 @@ def current_milestone(ledger_text: str) -> str | None:
 
 def review_lines(ledger_text: str) -> list[str]:
     review_section = latest_lines(ledger_text, "Review", limit=12)
+    if review_section:
+        return review_section
     decision_review = [line for line in latest_lines(ledger_text, "Decisions", limit=20) if "review" in line.lower()]
-    return (review_section + decision_review)[-12:]
+    return decision_review[-12:]
 
 
 def blocking_open_loops(open_loops: list[str]) -> list[str]:
@@ -203,10 +254,18 @@ def review_has_blocker(review: list[str]) -> bool:
 def review_results(review: list[str]) -> list[str]:
     results: list[str] = []
     for line in review:
-        match = REVIEW_RESULT_RE.search(line)
+        match = REVIEW_RESULT_RE.search(line) or REVIEW_SECTION_RESULT_RE.search(line)
         if match:
             results.append(match.group(2).lower())
-    return results
+    return results[-1:]
+
+
+def latest_review_evidence(review: list[str]) -> list[str]:
+    latest_index = 0
+    for index, line in enumerate(review):
+        if REVIEW_RESULT_RE.search(line) or REVIEW_SECTION_RESULT_RE.search(line):
+            latest_index = index
+    return review[latest_index:]
 
 
 def verification_results(verification: list[str]) -> list[str]:
@@ -243,9 +302,11 @@ def commit_gate_errors(
         errors.append("missing review evidence")
     else:
         results = review_results(review)
-        if results and any(result in {"fail", "blocked"} for result in results):
+        if not results:
+            errors.append("review evidence lacks structured result marker")
+        elif any(result in {"pending", "fail", "blocked"} for result in results):
             errors.append("review evidence indicates blocking or unresolved findings")
-        elif not results and review_has_blocker(review):
+        elif review_has_blocker(latest_review_evidence(review)):
             errors.append("review evidence indicates blocking or unresolved findings")
     blocked_loops = blocking_open_loops(open_loops)
     if blocked_loops:
@@ -255,14 +316,14 @@ def commit_gate_errors(
 
 def guess_area(files: list[GitFile]) -> str:
     paths = [f.path for f in files]
-    if any(p.startswith("notes/") for p in paths) and len(paths) <= 3:
-        return "docs"
-    if any(p.startswith("tests/") or "/tests/" in p for p in paths):
-        return "test"
     if any(p.endswith(".py") for p in paths):
         return "python"
     if any(p.endswith((".ts", ".tsx", ".js", ".jsx")) for p in paths):
         return "app"
+    if all(p.startswith(("notes/", "docs/")) or p.endswith(".md") for p in paths):
+        return "docs"
+    if any(p.startswith("tests/") or "/tests/" in p for p in paths):
+        return "test"
     return "deepdone"
 
 
@@ -294,10 +355,26 @@ def build_message(epic: str | None, milestone: str | None, verification: list[st
         f"- Milestone: {milestone or 'none'}",
         "- Verification:",
     ]
-    lines.extend(f"  - {line}" for line in verification_text)
+    lines.extend(format_evidence(verification_text, nested=True))
     lines.append("- Review:")
-    lines.extend(f"  - {line}" for line in review_text)
+    lines.extend(format_evidence(review_text, nested=True))
+    if any(file.path == "notes/roadmap.md" or file.path.startswith("notes/epics/") for file in files):
+        lines.append("- Workflow state: roadmap or epic ledger updates included")
     return "\n".join(lines).rstrip() + "\n"
+
+
+def format_evidence(lines: list[str], nested: bool = False) -> list[str]:
+    item_indent = "  " if nested else ""
+    detail_indent = "    " if nested else "  "
+    formatted: list[str] = []
+    for index, line in enumerate(lines):
+        if line.startswith("- "):
+            formatted.append(item_indent + line)
+        elif index == 0:
+            formatted.append(item_indent + "- " + line)
+        else:
+            formatted.append(detail_indent + line)
+    return formatted
 
 
 def render_candidate(candidate: dict, files: list[GitFile], excluded_local: list[GitFile], message: str) -> str:
@@ -314,9 +391,9 @@ def render_candidate(candidate: dict, files: list[GitFile], excluded_local: list
         + "\n\n## Excluded Local Files\n\n"
         + ("\n".join(f"- `{f.status}` `{f.path}`" for f in excluded_local) if excluded_local else "- none")
         + "\n\n## Verification\n\n"
-        + ("\n".join(f"- {line}" for line in verification) if verification else "- not found")
+        + ("\n".join(format_evidence(verification)) if verification else "- not found")
         + "\n\n## Review\n\n"
-        + ("\n".join(f"- {line}" for line in review) if review else "- not found")
+        + ("\n".join(format_evidence(review)) if review else "- not found")
         + "\n\n## Open Loops\n\n"
         + ("\n".join(f"- {line}" for line in open_loops) if open_loops else "- none found")
         + "\n\n## Commit Gate\n\n"
@@ -333,13 +410,26 @@ def ensure_repo_path(root: Path, rel: str) -> Path:
     return path
 
 
+def commit_authorization_errors(commit: bool, yes: bool, authorized_by: str | None) -> list[str]:
+    if not commit:
+        return []
+    errors: list[str] = []
+    if not yes:
+        errors.append("actual commit requires --yes")
+    if authorized_by not in {"exact-user-request", "mode"}:
+        errors.append("actual commit requires --authorized-by exact-user-request|mode")
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prepare or create a DeepDone commit")
     parser.add_argument("--candidate", action="store_true", help="prepare candidate only, default")
     parser.add_argument("--commit", action="store_true", help="create commit")
     parser.add_argument("--yes", action="store_true", help="confirm actual commit")
+    parser.add_argument("--authorized-by", choices=("exact-user-request", "mode"), help="record current-run commit authority source")
     parser.add_argument("--include-untracked", action="store_true", help="deprecated; expected untracked files are staged by exact path")
     parser.add_argument("--message-file", help="use an existing commit message file")
+    parser.add_argument("--ledger", help="explicit active or reviewed-complete epic ledger path")
     parser.add_argument("--output", default="-", help="candidate output path, or '-' for stdout")
     args = parser.parse_args()
 
@@ -371,9 +461,9 @@ def main() -> int:
             print(f"- {p}", file=sys.stderr)
         return 2
 
-    epic, ledger_path, active_epic_state, ledger_text = parse_active_ledger(root)
+    epic, ledger_path, active_epic_state, ledger_text = parse_active_ledger(root, args.ledger)
     milestone = current_milestone(ledger_text) if ledger_text else None
-    verification = latest_lines(ledger_text, "Verification Log") if ledger_text else []
+    verification = latest_verification_lines(ledger_text) if ledger_text else []
     review = review_lines(ledger_text) if ledger_text else []
     open_loops = latest_lines(ledger_text, "Open Loops") if ledger_text else []
     gate_errors = commit_gate_errors(ledger_path, active_epic_state, ledger_text, verification, review, open_loops)
@@ -394,8 +484,9 @@ def main() -> int:
         "review": review,
         "open_loops": open_loops,
         "commit_gate_errors": gate_errors,
-        "diff_stat": diff_stat.splitlines() if diff_stat else [],
+        "tracked_diff_stat": diff_stat.splitlines() if diff_stat else [],
         "staged_stat": staged_stat.splitlines() if staged_stat else [],
+        "untracked_files": [f.path for f in files if f.status == "??"],
         "message": message,
     }
 
@@ -409,8 +500,11 @@ def main() -> int:
             output_path.write_text(rendered, encoding="utf-8")
             print(f"Wrote candidate: {output_path.relative_to(root)}")
         return 0
-    if not args.yes:
-        print("Refusing actual commit without --yes", file=sys.stderr)
+    authorization_errors = commit_authorization_errors(args.commit, args.yes, args.authorized_by)
+    if authorization_errors:
+        print("Refusing actual commit because authorization is incomplete:", file=sys.stderr)
+        for error in authorization_errors:
+            print(f"- {error}", file=sys.stderr)
         return 2
     if gate_errors:
         print("Refusing actual commit because commit gates failed:", file=sys.stderr)

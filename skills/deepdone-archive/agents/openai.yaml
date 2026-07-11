@@ -5,3 +5,6 @@ interface:
     Use $deepdone-archive.
     Archive the completed DeepDone epic only when I provide a merge or release reference.
     Update roadmap pointers and preserve post-merge verification truth.
+
+policy:
+  allow_implicit_invocation: false

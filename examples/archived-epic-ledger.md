@@ -20,13 +20,19 @@ Make authentication failures return stable JSON errors without changing successf
 
 ## Decisions
 
-- review-result: pass
+- none
 
 ## Verification Log
 
 - command: `pytest tests/test_auth_errors.py`
   result: pass
   notes: invalid credentials and expired session cases pass
+
+## Review
+
+- reviewed-at: 2026-05-18T12:00:00Z
+  result: pass
+  notes: no blocking findings
 
 ## Open Loops
 

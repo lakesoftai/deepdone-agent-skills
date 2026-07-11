@@ -40,6 +40,7 @@ Read the whole ledger, with special attention to:
 - `Milestones`
 - `Decisions`
 - `Verification Log`
+- `Review`, treating a missing section as `pending`
 - `Open Loops`
 - `Next Action`
 - `Status`
@@ -72,6 +73,7 @@ Produce compact state:
 - milestones done
 - blockers or open loops
 - latest verification truth
+- latest review truth
 - drift or stale-state warnings
 - exact next action
 
@@ -93,16 +95,18 @@ If no planning mode exists, write a compact reconciliation plan and stop before 
 4. Compare ledger claims against current diff and latest checks.
 5. Identify the latest completed milestone.
 6. Identify unresolved decisions, blockers, and stale status.
-7. Confirm whether `Next Action` still makes sense.
-8. If stale, rewrite `Next Action` to one concrete step.
-9. Keep `Status` accurate.
-10. If epic is complete and roadmap is waiting, recommend `DeepDone Advance` instead of more edits.
+7. Treat a missing Review section as pending; add it only when reconciliation needs durable review state.
+8. Confirm whether `Next Action` still makes sense.
+9. If stale, rewrite `Next Action` to one concrete step.
+10. Keep `Status` accurate.
+11. Recommend `$deepdone-advance` only when epic is complete and latest review result is `pass`.
 
 ## Reconciliation Rules
 
-- if code and ledger disagree, say so explicitly and reconcile before more edits
-- if roadmap and ledger disagree on which epic is active, prefer the ledger that matches current code changes, but surface the mismatch clearly
+- reconcile only stale status, stale Next Action, missing Review, or verification recency when one work unit is unambiguous
+- block on multiple plausible active ledgers, current changes belonging to another epic, unrelated dirty files, or judgment-heavy mismatch
 - if an epic ledger says `complete` and roadmap `Active Epic.state` is `complete-pending-advance`, next action is usually `Run DeepDone Advance`
+- if an epic says complete without latest review result `pass`, reopen it as active and route to review
 - if no meaningful changes exist beyond the ledger, preserve finished milestones and do not reopen them casually
 - if a milestone was partially implemented but not verified, keep it in progress or reopen it explicitly
 

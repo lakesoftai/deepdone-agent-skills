@@ -5,3 +5,6 @@ interface:
     Use $deepdone-sync.
     Reconstruct current DeepDone state from roadmap, active ledger, git status, and verification truth.
     Set one exact next action.
+
+policy:
+  allow_implicit_invocation: false

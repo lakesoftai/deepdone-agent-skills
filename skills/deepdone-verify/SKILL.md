@@ -53,6 +53,8 @@ Record exact command and result.
 If something could not run, state exact blocker.
 Do not claim pass based on intent.
 
+Treat verification as the readiness gate. Fresh implementation checks may be reused only when their scope, command, result, and recency clearly cover current code. Otherwise rerun them.
+
 ## Ledger Writeback
 
 Append lines under `## Verification Log` such as:
@@ -90,7 +92,11 @@ Broaden verification when change touches:
 4. Decide whether broader checks are needed.
 5. Run broader checks only where justified.
 6. Log every command and outcome with `result:`.
-7. State residual risk if coverage still incomplete.
+7. If required checks pass, keep epic `Status: active` and set `Next Action` to run `$deepdone-review`.
+8. If a required check fails or blocks, record the issue in `Open Loops`, keep review pending, and set one exact fix or unblock action.
+9. State residual risk if coverage still incomplete.
+
+Do not mark an epic complete or roadmap state `complete-pending-advance`. Review owns completion.
 
 ## Output
 
@@ -99,3 +105,4 @@ Return:
 - checks run
 - pass, fail, or blocked status
 - residual risk
+- exact next action

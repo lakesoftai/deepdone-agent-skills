@@ -5,3 +5,6 @@ interface:
     Use $deepdone-verify.
     Run the smallest convincing checks for the current DeepDone changes.
     Log each command with result: pass, fail, or blocked.
+
+policy:
+  allow_implicit_invocation: false

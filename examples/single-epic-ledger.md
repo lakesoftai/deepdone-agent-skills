@@ -35,6 +35,12 @@ Make authentication failures return stable JSON errors without changing successf
   result: blocked
   notes: test file not written yet
 
+## Review
+
+- reviewed-at: not-run
+  result: pending
+  notes: implementation not reviewed yet
+
 ## Open Loops
 
 - none

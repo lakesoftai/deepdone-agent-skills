@@ -63,6 +63,82 @@ class InspectDeepDoneStateTests(unittest.TestCase):
             ["- command: `pytest`", "result: pass", "notes: ok"],
         )
 
+    def test_verification_entries_are_not_truncated_mid_entry(self) -> None:
+        ledger = "# Demo\n\n## Verification Log\n\n" + "\n".join(
+            f"- command: `check-{index}`\n  result: pass\n  notes: result {index}" for index in range(5)
+        )
+
+        lines = self.inspect.latest_verification_lines(ledger)
+
+        self.assertEqual(lines[0], "- command: `check-2`")
+        self.assertEqual(lines[-1], "notes: result 4")
+        self.assertEqual(len(lines), 9)
+
+    def test_legacy_ledger_without_review_is_pending(self) -> None:
+        ledger = "# Demo\n\n## Status\n\nactive\n"
+
+        self.assertEqual(self.inspect.latest_review_lines(ledger), [])
+        self.assertEqual(self.inspect.latest_review_result(ledger), "pending")
+
+    def test_latest_review_result_wins(self) -> None:
+        ledger = (
+            "# Demo\n\n"
+            "## Review\n\n"
+            "- reviewed-at: 2026-07-11T10:00:00Z\n"
+            "  result: fail\n"
+            "  notes: one finding\n"
+            "- reviewed-at: 2026-07-11T11:00:00Z\n"
+            "  result: pass\n"
+            "  notes: fixed\n"
+        )
+
+        self.assertEqual(self.inspect.latest_review_result(ledger), "pass")
+
+    def test_finds_one_reviewed_complete_single_epic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ledger = root / "notes" / "epics" / "2026-07-11-demo.md"
+            ledger.parent.mkdir(parents=True)
+            ledger.write_text(
+                "# Demo\n\n"
+                "## Review\n\n"
+                "- reviewed-at: 2026-07-11T11:00:00Z\n"
+                "  result: pass\n"
+                "  notes: clean\n\n"
+                "## Status\n\ncomplete\n",
+                encoding="utf-8",
+            )
+
+            found = self.inspect.find_obvious_active_ledger(root)
+
+        self.assertEqual(found, ledger)
+
+    def test_archive_only_dirty_state_is_not_unowned_work(self) -> None:
+        self.assertTrue(
+            self.inspect.only_lifecycle_state_changes(
+                [
+                    " M notes/roadmap.md",
+                    " D notes/epics/2026-07-11-demo.md",
+                    "?? notes/archive/epics/2026-07-11-demo.md",
+                ]
+            )
+        )
+        self.assertFalse(self.inspect.only_lifecycle_state_changes([" M src/app.py"]))
+
+    def test_invalid_roadmap_ledger_is_not_hidden_by_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fallback = root / "notes" / "epics" / "fallback.md"
+            fallback.parent.mkdir(parents=True)
+            fallback.write_text("# Fallback\n\n## Status\n\nactive\n", encoding="utf-8")
+
+            invalid = self.inspect.safe_rel(root, "notes/epics/missing.md")
+            found = self.inspect.find_obvious_active_ledger(root)
+
+        self.assertIsNotNone(invalid)
+        self.assertFalse(invalid.exists())
+        self.assertEqual(found, fallback)
+
 
 if __name__ == "__main__":
     unittest.main()

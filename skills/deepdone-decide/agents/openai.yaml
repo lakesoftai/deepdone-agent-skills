@@ -5,3 +5,6 @@ interface:
     Use $deepdone-decide.
     Resolve one specific technical unknown for the current DeepDone milestone.
     Record evidence, options, decision, and consequences in the active ledger.
+
+policy:
+  allow_implicit_invocation: false

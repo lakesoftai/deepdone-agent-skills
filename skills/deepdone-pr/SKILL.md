@@ -11,7 +11,7 @@ description: Prepare a platform-neutral pull or merge request draft, optionally 
 Bridge completed local DeepDone work to a review request without assuming GitHub, GitLab, push permission, or merge authority.
 
 This skill prepares PR/MR material by default.
-It creates or inspects a PR only when the user or supervisor context explicitly asks for that exact step.
+It creates a PR only when the current user explicitly asks, or supervisor context carries `pr-create: allowed` with source `exact user request`. State labels never authorize creation.
 
 Never push by default.
 Never merge.
@@ -40,18 +40,21 @@ Before drafting, inspect:
 - active roadmap if present
 - active epic ledger
 - latest `Verification Log`
-- latest `review-result`
+- latest `## Review` result, or legacy `review-result`
 - `Open Loops`
 
 Before actual PR creation, all must be true:
 
-- user explicitly requested creation
+- user explicitly requested creation, directly or through a supervisor authorization block with exact source
 - branch name and target branch are clear
 - remote host is clear
 - current branch is published or user explicitly approved push
 - repo-native tool is available and authenticated
+- latest review result is `pass`
 - PR title/body accurately reflect the local commit and DeepDone state
 - no unresolved open loop blocks review
+
+Push needs separate `push: allowed` authority with source `exact user request`. PR creation authority does not imply push authority.
 
 If any precondition is missing, stop with a draft and exact blocker.
 
@@ -74,7 +77,7 @@ Use this platform-neutral body:
 - Epic: <name or none>
 - Ledger: <path or none>
 - Milestone: <name or scope>
-- Review: <review-result or not found>
+- Review: <latest review result or not found>
 
 ## Verification
 

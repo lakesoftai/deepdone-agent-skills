@@ -13,7 +13,7 @@ DeepDone:
     result: pass
     notes: invalid credentials and expired session cases pass
 - Review:
-  - review-result: pass
+  - result: pass
 ```
 
 ## Files
@@ -33,8 +33,9 @@ DeepDone:
 
 ## Review
 
-- review-result: pass
-- no blocking findings
+- reviewed-at: 2026-05-18T12:00:00Z
+  result: pass
+  notes: no blocking findings
 
 ## Open Loops
 

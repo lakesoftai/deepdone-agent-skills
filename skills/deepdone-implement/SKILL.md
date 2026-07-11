@@ -107,19 +107,21 @@ Keep ledger current during milestone work:
 - add blocked checks or pending follow-ups to `Open Loops`
 - update `Next Action` to one exact next step
 - update `Status` when milestone or epic state changes
+- when behavior changes after any prior review, append a `## Review` entry with `reviewed-at: not-run`, `result: pending`, and notes that code changed
 
 Do not create new sections.
 Do not add status prose outside the ledger structure.
 
 ## Roadmap Interaction Rules
 
-If the epic belongs to a multi-epic initiative and the current milestone completes the whole epic:
+If the current milestone finishes all planned implementation work:
 
-- mark the epic ledger `Status` as `complete`
-- update the roadmap entry for this epic from `[-]` to `[x]`
-- update roadmap `Active Epic.state` to `complete-pending-advance`
-- do **not** create the next epic here
-- set epic `Next Action` to `Run DeepDone Advance to activate the next queued epic.`
+- keep epic ledger `Status` as `active`
+- keep roadmap entry and `Active Epic.state` as `active`
+- set `Next Action` to run `$deepdone-verify`
+- do not mark the epic complete or advanceable
+
+Only `$deepdone-review` may mark an epic `complete` and roadmap state `complete-pending-advance` after a passing review.
 
 If the epic is blocked:
 
@@ -147,9 +149,11 @@ If re-planning is needed, stop execution, record the issue, and return a recomme
 4. Implement only what the current milestone requires.
 5. Run the smallest relevant checks first.
 6. Record actual results in `Verification Log`.
-7. Mark milestone done only if acceptance check passed, or explicitly mark blocked.
+7. Mark implementation milestone done only if its implementation acceptance check passed, or explicitly mark blocked.
 8. If more work remains in the epic, set one exact `Next Action` inside the next unfinished milestone.
-9. If the epic is fully complete, update epic status and, if present, roadmap completion state.
+9. If implementation work is finished, keep epic active and route to verification.
+
+Checks run here are implementation feedback, not the workflow verification gate. Route to `$deepdone-verify` after code changes even when these checks pass. Verify may reuse fresh complete evidence instead of rerunning an identical command.
 
 ## Done Rule
 
@@ -167,12 +171,7 @@ Milestone is done only when:
 - required targeted checks were actually run or explicitly blocked
 - ledger reflects new truth
 
-Epic is done only when:
-
-- all milestones required for the epic are complete
-- epic-level exit criteria are satisfied
-- ledger `Status` is `complete`
-- if roadmap exists, roadmap state is updated to `complete-pending-advance`
+This skill never declares an epic done. Verification and review remain required even when all implementation milestones are checked.
 
 ## Output
 

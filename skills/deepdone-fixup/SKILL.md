@@ -102,9 +102,12 @@ Stop for:
 8. Update active epic ledger:
    - record fixed findings in `## Decisions` or `## Open Loops`, whichever already fits the ledger truth,
    - append exact checks under `## Verification Log` with `command:`, `result: pass|fail|blocked`, and `notes:`,
-   - update `Next Action`.
-9. If review should be rerun, set `Next Action` to run `$deepdone-review`.
+   - append a `## Review` entry with `reviewed-at: not-run`, `result: pending`, and notes that fixup changed code,
+   - update `Next Action` to run `$deepdone-verify`.
+9. Return changed code to verification before review runs again.
 10. Return result block.
+
+Checks run during fixup prove the local repair only. They do not skip the `$deepdone-verify` transition. Verify may reuse fresh complete evidence when scope and recency are clear.
 
 ## Ledger Write Policy
 
@@ -116,6 +119,7 @@ Use existing sections:
 - `## Verification Log`: exact commands and structured `result: pass|fail|blocked` markers.
 - `## Open Loops`: findings that remain unresolved or require user decision.
 - `## Next Action`: one exact next step.
+- `## Review`: append pending state after code changes; latest entry wins.
 - `## Status`: update only if the epic is blocked by findings.
 
 ## Verification Policy

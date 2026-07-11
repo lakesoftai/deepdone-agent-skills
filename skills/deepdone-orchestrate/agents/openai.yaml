@@ -7,3 +7,6 @@ interface:
     Continue the current DeepDone workflow from the repository, roadmap, and active epic ledger.
     Mode: one-step.
     Commit automatically only when I choose Mode: until-commit or Mode: end-to-end, or explicitly ask for a commit.
+
+policy:
+  allow_implicit_invocation: true

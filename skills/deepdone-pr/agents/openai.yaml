@@ -5,3 +5,6 @@ interface:
     Use $deepdone-pr.
     Prepare a PR or merge request draft for the current DeepDone work.
     Create or push only when I explicitly ask and repository tooling is clear.
+
+policy:
+  allow_implicit_invocation: false

@@ -1,7 +1,6 @@
 # DeepDone Skills
 
-DeepDone is a skill package for agent-driven software work. Supports single step or fully automatic end-to-end implementation of your
-requirements, from planning to pull request. 
+DeepDone is a skill package for agent-driven software work. It supports single-step or bounded end-to-end implementation from planning through a reviewed local commit. PR and archive actions remain separate and explicit.
 
 It keeps long work recoverable by using one roadmap, one active epic ledger, and narrow workflow skills.
 
@@ -55,7 +54,7 @@ Useful modes:
 Post-commit work uses direct skills:
 
 - `deepdone-pr`: draft PR/MR text, optionally create or inspect CI only when explicitly requested
-- `deepdone-archive`: archive completed epic state after merge or release reference
+- `deepdone-archive`: archive completed epic state after explicit request plus merge or release reference
 
 ## Workflow
 
@@ -74,8 +73,7 @@ workflow stage.
 
 - PR/MR drafting is default and platform-neutral.
 - PR/MR creation needs explicit approval, clear remote, target branch, branch publish state, and available repo tooling.
-- Archive needs explicit request or supervisor context with merge commit, PR/MR URL, release tag, or equivalent
-  reference.
+- Archive needs explicit current-run user authority plus a merge commit, PR/MR URL, release tag, or equivalent reference.
 - Push, merge, deploy, and archive are never implicit.
 
 ## Skills
@@ -91,7 +89,7 @@ workflow stage.
 - `deepdone-fixup`: fixes accepted local review findings
 - `deepdone-commit`: prepares or creates a gated local commit
 - `deepdone-pr`: prepares platform-neutral PR/MR drafts and inspects CI for existing PRs
-- `deepdone-archive`: archives completed epic state after explicit merge or release reference
+- `deepdone-archive`: archives completed epic state after explicit request plus merge or release reference
 
 ## Safety
 
@@ -99,7 +97,7 @@ workflow stage.
 - no push, merge, deploy, archive, destructive git, production mutation, or data deletion without explicit approval
 - commit only in `until-commit`, `end-to-end`, or explicit commit request
 - PR/MR creation only after explicit request and clear repo tooling
-- archive only after explicit request or clear merge/release reference
+- archive only after explicit current-run request and clear merge/release reference
 - never use `git add .`
 - commit harness rejects likely secrets and local-only files
 
@@ -118,7 +116,6 @@ See:
 - [examples/pr-body.md](examples/pr-body.md)
 - [examples/archived-epic-ledger.md](examples/archived-epic-ledger.md)
 - [examples/post-merge-roadmap.md](examples/post-merge-roadmap.md)
-- [examples/run-audit.jsonl](examples/run-audit.jsonl)
 
 ## Self-Test
 

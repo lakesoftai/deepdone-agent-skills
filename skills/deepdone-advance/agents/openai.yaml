@@ -5,3 +5,6 @@ interface:
     Use $deepdone-advance.
     Advance the current DeepDone roadmap only if the active epic is complete or no active epic exists.
     Create exactly one new active epic ledger.
+
+policy:
+  allow_implicit_invocation: true

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import json
 import re
 import subprocess
 import sys
@@ -28,9 +27,11 @@ SKILLS = [
     "deepdone-verify",
 ]
 
+IMPLICIT_ENTRY_SKILLS = {"deepdone-advance", "deepdone-orchestrate"}
+ORCHESTRATOR_MAX_LINES = 250
+
 HELPER_SCRIPTS = [
     "skills/deepdone-commit/scripts/commit_progress.py",
-    "skills/deepdone-orchestrate/scripts/append_run_audit.py",
     "skills/deepdone-orchestrate/scripts/inspect_deepdone_state.py",
 ]
 
@@ -42,7 +43,6 @@ EXAMPLES = [
     "examples/pr-body.md",
     "examples/archived-epic-ledger.md",
     "examples/post-merge-roadmap.md",
-    "examples/run-audit.jsonl",
 ]
 
 
@@ -92,6 +92,66 @@ def check_skill_metadata(errors: list[str]) -> None:
             for required in ("interface:", "display_name:", "short_description:", "default_prompt:"):
                 if required not in manifest:
                     errors.append(f"{skill}: agents/openai.yaml missing {required}")
+            prompt_match = re.search(r"^\s{2}default_prompt:\s*\|\s*$\n(?P<body>(?:^(?:\s{4,}.*|\s*)$\n?)+)", manifest, flags=re.MULTILINE)
+            if not prompt_match or not prompt_match.group("body").strip():
+                errors.append(f"{skill}: agents/openai.yaml has invalid or empty default_prompt block")
+            match = re.search(r"^\s*allow_implicit_invocation:\s*(true|false)\s*$", manifest, flags=re.MULTILINE)
+            if not match:
+                errors.append(f"{skill}: agents/openai.yaml missing allow_implicit_invocation policy")
+            else:
+                actual = match.group(1) == "true"
+                expected = skill in IMPLICIT_ENTRY_SKILLS
+                if actual != expected:
+                    errors.append(f"{skill}: allow_implicit_invocation must be {str(expected).lower()}")
+
+
+def check_skill_references(errors: list[str]) -> None:
+    link_re = re.compile(r"\]\((references/[^)#]+)(?:#[^)]+)?\)")
+    for skill in SKILLS:
+        skill_dir = ROOT / "skills" / skill
+        text = read_text(skill_dir / "SKILL.md")
+        linked = set(link_re.findall(text))
+        for rel in linked:
+            if not (skill_dir / rel).is_file():
+                errors.append(f"{skill}: linked reference does not exist: {rel}")
+
+        references_dir = skill_dir / "references"
+        if references_dir.exists():
+            for path in references_dir.glob("*.md"):
+                rel = str(path.relative_to(skill_dir))
+                if rel not in linked:
+                    errors.append(f"{skill}: orphan reference not linked from SKILL.md: {rel}")
+
+
+def check_orchestrator_budget(errors: list[str]) -> None:
+    path = ROOT / "skills" / "deepdone-orchestrate" / "SKILL.md"
+    line_count = len(read_text(path).splitlines())
+    if line_count > ORCHESTRATOR_MAX_LINES:
+        errors.append(f"deepdone-orchestrate: {line_count} lines exceeds {ORCHESTRATOR_MAX_LINES}")
+
+
+def check_logging_removed(errors: list[str]) -> None:
+    removed_paths = (
+        ROOT / "skills" / "deepdone-orchestrate" / "scripts" / "append_run_audit.py",
+        ROOT / "tests" / "test_append_run_audit.py",
+        ROOT / "examples" / "run-audit.jsonl",
+    )
+    for path in removed_paths:
+        if path.exists():
+            errors.append(f"run logging path must be removed: {path.relative_to(ROOT)}")
+
+    forbidden = ("append_run_audit", "run-audit.jsonl", ".deepdone/runs")
+    roots = [ROOT / "skills", ROOT / "scripts", ROOT / "tests", ROOT / "examples"]
+    files = [ROOT / "README.md", ROOT / "AGENTS.md"]
+    for root in roots:
+        files.extend(path for path in root.rglob("*") if path.is_file() and "__pycache__" not in path.parts)
+    for path in files:
+        if path.resolve() == Path(__file__).resolve():
+            continue
+        text = read_text(path)
+        for token in forbidden:
+            if token in text:
+                errors.append(f"logging integration remains in {path.relative_to(ROOT)}: {token}")
 
 
 def check_examples(errors: list[str]) -> None:
@@ -113,7 +173,7 @@ def check_examples(errors: list[str]) -> None:
             errors.append(f"examples/pr-body.md: missing {required}")
 
     archived_ledger = read_text(ROOT / "examples" / "archived-epic-ledger.md")
-    for required in ("## Status", "archived", "merge/ref:", "post-merge verification:"):
+    for required in ("## Review", "result: pass", "## Status", "archived", "merge/ref:", "post-merge verification:"):
         if archived_ledger and required not in archived_ledger:
             errors.append(f"examples/archived-epic-ledger.md: missing {required}")
 
@@ -121,18 +181,11 @@ def check_examples(errors: list[str]) -> None:
     if post_merge and "notes/archive/epics/" not in post_merge:
         errors.append("examples/post-merge-roadmap.md: missing archived ledger path")
 
-    audit = read_text(ROOT / "examples" / "run-audit.jsonl")
-    for index, line in enumerate(audit.splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError as exc:
-            errors.append(f"examples/run-audit.jsonl:{index}: invalid JSON: {exc.msg}")
-            continue
-        for field in ("state_before", "skill_invoked", "state_after", "files_touched", "stop_reason"):
-            if field not in row:
-                errors.append(f"examples/run-audit.jsonl:{index}: missing {field}")
+    for rel in ("examples/single-epic-ledger.md", "examples/multi-epic-active-ledger.md"):
+        text = read_text(ROOT / rel)
+        for required in ("## Review", "reviewed-at: not-run", "result: pending"):
+            if text and required not in text:
+                errors.append(f"{rel}: missing {required}")
 
 
 def check_helper_scripts(errors: list[str]) -> None:
@@ -170,6 +223,9 @@ def run_unit_tests(errors: list[str]) -> None:
 def main() -> int:
     errors: list[str] = []
     check_skill_metadata(errors)
+    check_skill_references(errors)
+    check_orchestrator_budget(errors)
+    check_logging_removed(errors)
     check_examples(errors)
     check_helper_scripts(errors)
     run_unit_tests(errors)

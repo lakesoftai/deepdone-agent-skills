@@ -1,7 +1,7 @@
 ---
 name: deepdone-archive
 slug: deepdone-archive
-description: Archive a completed DeepDone epic after explicit user request or clear supervisor-provided merge/release reference, update roadmap pointers, and preserve post-merge verification truth.
+description: Archive a completed DeepDone epic after an explicit current-run archive request and a clear merge or release reference. Update roadmap pointers and preserve post-merge verification truth.
 ---
 
 # DeepDone Archive
@@ -13,7 +13,7 @@ Close the post-commit loop after work has merged or otherwise been released.
 This skill archives completed epic state.
 It is not roadmap advancement, PR creation, merge, or deploy.
 
-Archive only when explicitly requested or when supervisor context includes a clear merge or release reference.
+Archive only when the current user explicitly requests it, directly or through supervisor context carrying `archive: allowed` with source `exact user request`.
 
 ## Inputs
 
@@ -26,13 +26,17 @@ Prefer explicit:
 
 If merge or release reference is missing, stop and ask for it.
 
+A merge commit, PR/MR URL, release tag, completed state, or `ready_to_archive` classification is evidence only. None grants archive authority.
+
 ## Preconditions
 
 Before editing:
 
+- current-run archive authority is explicit and its source is recorded
 - no `.deepdone/STOP` exists
 - target epic ledger exists
 - target epic is complete
+- latest review result is `pass`
 - merge or release reference is clear
 - archive destination does not already exist
 - roadmap, if present, points to the target epic or completed queue entry
@@ -78,7 +82,7 @@ If it cannot run, record exact blocker and residual risk.
 ## Workflow
 
 1. Locate roadmap and target epic ledger.
-2. Confirm explicit archive request or supervisor merge/release context.
+2. Confirm explicit current-run archive authority and its exact source.
 3. Confirm epic is complete and safe to archive.
 4. Determine archive path.
 5. Move ledger to `notes/archive/epics/`.

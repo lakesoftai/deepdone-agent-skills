@@ -5,3 +5,6 @@ interface:
     Use $deepdone-plan.
     Classify this work as small task, single epic, or multi-epic initiative.
     Create only the minimum durable state needed to start safely.
+
+policy:
+  allow_implicit_invocation: false

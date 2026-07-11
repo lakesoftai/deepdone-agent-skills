@@ -17,7 +17,7 @@ Agent-driven workflow management for software projects. Each skill does one thin
 | `deepdone-fixup` | Fix accepted local review findings, stop on product/architecture judgment |
 | `deepdone-commit` | Safe git commit with gate checks, dangerous-file detection |
 | `deepdone-pr` | Prepare PR/MR draft, optional explicit creation, or inspect existing PR/MR CI |
-| `deepdone-archive` | Archive completed epic state after explicit merge or release reference |
+| `deepdone-archive` | Archive completed epic state after explicit current-run request plus merge or release reference |
 
 ## Workflow
 
@@ -34,7 +34,7 @@ The orchestrator (`deepdone-orchestrate`) drives this state machine. It inspects
 `pr` and `archive` are post-commit lifecycle steps. They are not automatic side effects of commit:
 
 - `deepdone-pr` drafts PR/MR text by default. Creation requires explicit approval plus clear remote, target branch, branch publish state, and repo-native tooling.
-- `deepdone-archive` moves completed epic state only after explicit archive request or supervisor context with a clear merge/release reference.
+- `deepdone-archive` moves completed epic state only after explicit current-run archive authority plus a clear merge or release reference.
 
 ## Quick Start
 
@@ -68,14 +68,13 @@ Archive <ledger path> after merge/ref <PR URL, merge SHA, or release tag>.
 
 ## Key Concepts
 
-- **Epic ledger**: `notes/epics/YYYY-MM-DD-<slug>.md`. Standard sections: Summary, Constraints, Milestones, Decisions, Verification Log, Open Loops, Next Action, Status.
+- **Epic ledger**: `notes/epics/YYYY-MM-DD-<slug>.md`. Standard sections: Summary, Constraints, Milestones, Decisions, Verification Log, Review, Open Loops, Next Action, Status.
 - **Archived epic ledger**: `notes/archive/epics/YYYY-MM-DD-<slug>.md`. Completed epic state after explicit archive.
 - **Roadmap**: `notes/roadmap.md`. For multi-epic initiatives. Tracks cross-cutting decisions, epic queue, and active epic.
-- **Run audit**: `.deepdone/runs/YYYYMMDD-HHMMSS.jsonl`. For loop-mode supervisor traces.
 - **`.deepdone/STOP`**: Kill switch. If this file exists, all skills halt immediately.
 - **Commit authorization**: Commits only happen in `until-commit`/`end-to-end` modes or on explicit user request. Default is candidate-only.
 - **PR/MR creation authorization**: PR/MR drafts are safe by default. Creation and push require explicit approval.
-- **Archive authorization**: Archive requires explicit request or supervisor-provided merge/release reference.
+- **Archive authorization**: Archive requires explicit current-run user authority. Merge or release evidence never grants authority.
 
 ## Safety
 

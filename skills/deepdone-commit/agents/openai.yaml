@@ -4,3 +4,6 @@ interface:
   default_prompt: |
     Use $deepdone-commit.
     Prepare a commit candidate for the current DeepDone work. Commit automatically when I ask for commit or a DeepDone supervisor invokes commit mode.
+
+policy:
+  allow_implicit_invocation: false
