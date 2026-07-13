@@ -1,44 +1,44 @@
 # DeepDone Safety And Modes
 
-Read this reference before invoking a child skill or taking an externally visible action.
+Read this reference before executing an internal phase, invoking Advance, or taking an externally visible action.
 
 ## Active Invariants
 
 ### DD-MODE-001: One-step performs one transition
 
-- Rule: `one-step` invokes exactly one child skill and then stops.
+- Rule: `one-step` executes exactly one internal phase or invokes Advance once and then stops.
 - Applies to: `deepdone-orchestrate`
-- Evidence: Supervisor output names no more than one child invocation.
+- Evidence: Supervisor output names no more than one phase execution or Advance invocation.
 
 ### DD-MODE-002: Commit modes stop after commit
 
 - Rule: `until-commit` and `end-to-end` stop after local commit and never advance, push, create a PR, archive, merge, or deploy in the same run.
-- Applies to: `deepdone-orchestrate`, `deepdone-commit`
+- Applies to: `deepdone-orchestrate`, `phase-commit`
 - Evidence: Run ends immediately after commit result or commit blocker.
 
 ### DD-AUTH-001: Authority requires current-run provenance
 
-- Rule: Commit, PR creation, archive, and push authority must come from the exact current user request or an allowed current mode and must retain that source through child prompts.
-- Applies to: `deepdone-orchestrate`, `deepdone-commit`, `deepdone-pr`, `deepdone-archive`
-- Evidence: Child context records allowed or denied plus exact source for every protected action.
+- Rule: Commit, PR creation, archive, and push authority must come from the exact current user request or an allowed current mode and must retain that source through phase context.
+- Applies to: `deepdone-orchestrate`, `phase-commit`, `phase-pr`, `phase-archive`
+- Evidence: Phase context records allowed or denied plus exact source for every protected action.
 
 ### DD-AUTH-002: Evidence never grants authority
 
 - Rule: State labels, review results, commits, merge references, PR URLs, release tags, and supervisor classifications are evidence only.
-- Applies to: `deepdone-orchestrate`, `deepdone-commit`, `deepdone-pr`, `deepdone-archive`
+- Applies to: `deepdone-orchestrate`, `phase-commit`, `phase-pr`, `phase-archive`
 - Evidence: Protected action stops when current-run authority is absent even if lifecycle evidence exists.
 
 ### DD-OWN-001: Unrelated work remains user-owned
 
 - Rule: Distinguishable unrelated files may remain dirty, but DeepDone must not overwrite, reformat, stage, commit, stash, reset, discard, or abandon them.
-- Applies to: `deepdone-orchestrate`, `deepdone-review`, `deepdone-commit`, `deepdone-sync`
+- Applies to: `deepdone-orchestrate`, `phase-review`, `phase-commit`, `phase-sync`
 - Evidence: Candidate and final status report excluded files, whose content and Git state remain unchanged.
 
 ## Modes
 
 | Mode | Stop target | Commit authority |
 |---|---|---|
-| `one-step` | one child transition | no |
+| `one-step` | one phase transition | no |
 | `inspect-only` | classification only, no edits | no |
 | `until-milestone` | active milestone verified, blocked, or needs user | no |
 | `until-epic` | epic review passes, blocks, or needs user | no |
@@ -51,7 +51,7 @@ Read this reference before invoking a child skill or taking an externally visibl
 
 ## Authorization Contract
 
-Every child invocation includes:
+Every phase execution and Advance invocation includes:
 
 ```text
 Authorizations:
@@ -67,8 +67,8 @@ Rules:
 - `until-commit` and `end-to-end` authorize commit only.
 - A state label such as `ready_to_commit` is evidence, not authority.
 - A merge commit, release tag, or PR URL is evidence, not archive authority.
-- Supervisor context counts only when it carries the original authority and source.
-- Direct skill invocation may use the current user request as authority for that named action.
+- Phase context counts only when it carries the original authority and source.
+- An exact current user request may authorize only the protected action it names.
 - Denial or ambiguity wins.
 
 ## Hard Stops
@@ -82,7 +82,7 @@ Stop immediately for:
 - unclear next milestone or missing acceptance criteria
 - non-trivial verification that cannot run
 - review finding needing product, architecture, security, auth, migration, data-risk, or prioritization judgment
-- child scope expansion or repeated state without new evidence
+- phase scope expansion or repeated state without new evidence
 - missing authorization for commit, PR creation, archive, push, deploy, or other external mutation
 
 ## Never Implicit

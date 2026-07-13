@@ -24,6 +24,14 @@ REQUIRED = {
     "DD-STATE-001",
     "DD-STATE-002",
 }
+SUBJECT_PATHS = {
+    "deepdone-advance": ROOT / "skills/deepdone-advance/SKILL.md",
+    "deepdone-orchestrate": ROOT / "skills/deepdone-orchestrate/SKILL.md",
+    **{
+        f"phase-{name}": ROOT / f"skills/deepdone-orchestrate/references/phase-{name}.md"
+        for name in ("archive", "commit", "decide", "fixup", "implement", "plan", "pr", "review", "sync", "verify")
+    },
+}
 
 
 def section(text: str, name: str) -> str:
@@ -46,7 +54,7 @@ def contract_invariants() -> dict[str, set[str]]:
             end = matches[index + 1].start() if index + 1 < len(matches) else len(active)
             block = active[match.end() : end]
             applies = re.search(r"^-\s+Applies to:\s+(.+)$", block, flags=re.MULTILINE)
-            invariants[match.group(1)] = set(re.findall(r"`(deepdone-[a-z0-9-]+)`", applies.group(1))) if applies else set()
+            invariants[match.group(1)] = set(re.findall(r"`((?:deepdone|phase)-[a-z0-9-]+)`", applies.group(1))) if applies else set()
     return invariants
 
 
@@ -63,24 +71,24 @@ class WorkflowContractTests(unittest.TestCase):
                 self.assertRegex(block, r"(?m)^- Applies to: \S")
                 self.assertRegex(block, r"(?m)^- Evidence: \S")
 
-    def test_skill_conformance_matches_contract_ownership(self) -> None:
+    def test_subject_conformance_matches_contract_ownership(self) -> None:
         invariants = contract_invariants()
-        for invariant_id, skills in invariants.items():
-            self.assertTrue(skills, invariant_id)
-            for skill in skills:
-                skill_text = (ROOT / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
-                refs = set(re.findall(r"`(DD-[A-Z]+-[0-9]{3})`", section(skill_text, "Conforms To")))
-                self.assertIn(invariant_id, refs, skill)
+        for invariant_id, subjects in invariants.items():
+            self.assertTrue(subjects, invariant_id)
+            for subject in subjects:
+                subject_text = SUBJECT_PATHS[subject].read_text(encoding="utf-8")
+                refs = set(re.findall(r"`(DD-[A-Z]+-[0-9]{3})`", section(subject_text, "Conforms To")))
+                self.assertIn(invariant_id, refs, subject)
 
     def test_no_skill_references_unknown_or_retired_invariant(self) -> None:
         active = set(contract_invariants())
         retired: set[str] = set()
         for path in CONTRACTS:
             retired.update(re.findall(r"^###\s+(DD-[A-Z]+-[0-9]{3}):", section(path.read_text(encoding="utf-8"), "Retired Invariants"), flags=re.MULTILINE))
-        for skill_path in (ROOT / "skills").glob("*/SKILL.md"):
-            refs = set(re.findall(r"`(DD-[A-Z]+-[0-9]{3})`", section(skill_path.read_text(encoding="utf-8"), "Conforms To")))
-            self.assertFalse(refs.difference(active), skill_path)
-            self.assertFalse(refs.intersection(retired), skill_path)
+        for subject, path in SUBJECT_PATHS.items():
+            refs = set(re.findall(r"`(DD-[A-Z]+-[0-9]{3})`", section(path.read_text(encoding="utf-8"), "Conforms To")))
+            self.assertFalse(refs.difference(active), subject)
+            self.assertFalse(refs.intersection(retired), subject)
 
 
 if __name__ == "__main__":

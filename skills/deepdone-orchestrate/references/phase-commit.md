@@ -1,10 +1,4 @@
----
-name: deepdone-commit
-slug: deepdone-commit
-description: Prepare or create a safe focused git commit for completed DeepDone work after ledger, verification, and review gates pass. Use when the user asks for a commit candidate, asks to commit, or a supervisor mode authorizes commit.
----
-
-# DeepDone Commit
+# Commit Phase
 
 ## Purpose
 
@@ -43,7 +37,7 @@ Treat these as commit authorization for the current run:
 - mode `end-to-end`,
 - supervisor authorization block with `commit: allowed` and source `mode` or `exact user request`.
 
-Do not treat `ready_to_commit`, another state label, a clean review, or a child prompt without authority source as authorization.
+Do not treat `ready_to_commit`, another state label, a clean review, or phase context without authority source as authorization.
 
 Treat these as commit denial:
 
@@ -113,7 +107,7 @@ For an actual commit, use the harness when commit is authorized:
 python3 <skill-dir>/scripts/commit_progress.py --commit --yes --authorized-by <exact-user-request|mode> --reviewed-change-set .deepdone/reviews/<review-id>.json
 ```
 
-Resolve `<skill-dir>` from this loaded skill's filesystem path. Do not expect the helper under the target repository's root `scripts/` directory.
+Resolve `<skill-dir>` as the loaded `deepdone-orchestrate` directory containing this reference. Do not expect the helper under the target repository's root `scripts/` directory.
 
 Do not run `git add .`.
 

@@ -1,16 +1,10 @@
----
-name: deepdone-plan
-slug: deepdone-plan
-description: Classify incoming work as a small task, a single epic, or a multi-epic initiative. Create only the minimum durable state needed to start execution cleanly. Use when starting non-trivial work, ingesting a requirements doc, or when task scope is still fuzzy.
----
-
-# DeepDone Plan
+# Plan Phase
 
 ## Purpose
 
 Choose the correct execution unit before coding.
 
-This skill must not force all non-trivial work into one epic.
+This phase must not force all non-trivial work into one epic.
 Its first job is scope classification.
 
 Possible outcomes:

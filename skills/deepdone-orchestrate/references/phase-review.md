@@ -1,10 +1,4 @@
----
-name: deepdone-review
-slug: deepdone-review
-description: Perform skeptical local code review focused on correctness, regressions, security, overscope, and missing tests, then record findings and residual risk. Use before final integration or handoff.
----
-
-# DeepDone Review
+# Review Phase
 
 ## Purpose
 
@@ -101,7 +95,7 @@ Use this passing entry shape:
 
 Markdown path list is authoritative for agent behavior. JSON manifest is ignored local gate evidence, never run logging.
 
-On `fail`, keep epic and roadmap active and set `Next Action` to `$deepdone-fixup`.
+On `fail`, keep epic and roadmap active and set `Next Action` to run the Fixup phase through `$deepdone-orchestrate`.
 
 On `blocked`, mark epic and roadmap blocked and state exact unblock condition.
 

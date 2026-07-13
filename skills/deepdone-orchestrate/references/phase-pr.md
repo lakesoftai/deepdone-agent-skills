@@ -1,10 +1,4 @@
----
-name: deepdone-pr
-slug: deepdone-pr
-description: Prepare a platform-neutral pull or merge request draft, optionally create it only with explicit approval and clear repository tooling, and inspect CI for an existing PR when asked.
----
-
-# DeepDone PR
+# PR Phase
 
 ## Conforms To
 
@@ -14,7 +8,7 @@ description: Prepare a platform-neutral pull or merge request draft, optionally 
 
 Bridge completed local DeepDone work to a review request without assuming GitHub, GitLab, push permission, or merge authority.
 
-This skill prepares PR/MR material by default.
+This phase prepares PR/MR material by default.
 It creates a PR only when the current user explicitly asks, or supervisor context carries `pr-create: allowed` with source `exact user request`. State labels never authorize creation.
 
 Never push by default.

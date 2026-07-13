@@ -1,10 +1,4 @@
----
-name: deepdone-decide
-slug: deepdone-decide
-description: Research unknown or version-sensitive technology with official sources first, compare realistic options, and record one compact decision block in epic ledger. Use when implementation depends on a technical choice.
----
-
-# DeepDone Decide
+# Decide Phase
 
 ## Purpose
 

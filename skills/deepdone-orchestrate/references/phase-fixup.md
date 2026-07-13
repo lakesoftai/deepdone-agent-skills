@@ -1,10 +1,4 @@
----
-name: deepdone-fixup
-slug: deepdone-fixup
-description: Triage and fix accepted local code review findings from a DeepDone workflow, verify the fix, update the epic ledger, and stop when findings require product or architecture judgment.
----
-
-# DeepDone Fixup
+# Fixup Phase
 
 ## Conforms To
 
@@ -14,9 +8,9 @@ description: Triage and fix accepted local code review findings from a DeepDone 
 
 Fix review findings without turning review into a new unbounded implementation phase.
 
-Use this skill after `$deepdone-review` or an agent UI review has produced findings.
+Use this phase after the Review phase or an agent UI review has produced findings.
 
-This skill is allowed to fix findings only when they are:
+This phase is allowed to fix findings only when they are:
 
 - accepted,
 - local,
@@ -107,11 +101,11 @@ Stop for:
    - record fixed findings in `## Decisions` or `## Open Loops`, whichever already fits the ledger truth,
    - append exact checks under `## Verification Log` with `command:`, `result: pass|fail|blocked`, and `notes:`,
    - append a `## Review` entry with `reviewed-at: not-run`, `result: pending`, and notes that fixup changed code,
-   - update `Next Action` to run `$deepdone-verify`.
+   - update `Next Action` to run the Verify phase through `$deepdone-orchestrate`.
 9. Return changed code to verification before review runs again.
 10. Return result block.
 
-Checks run during fixup prove the local repair only. They do not skip the `$deepdone-verify` transition. Verify may reuse fresh complete evidence when scope and recency are clear.
+Checks run during fixup prove the local repair only. They do not skip the Verify transition. Verify may reuse fresh complete evidence when scope and recency are clear.
 
 ## Ledger Write Policy
 

@@ -1,10 +1,4 @@
----
-name: deepdone-sync
-slug: deepdone-sync
-description: Reconstruct active work from the epic ledger, and from the roadmap when one exists, summarize true current state, identify drift, and set one exact next action. Use after interruption, handoff, or context loss.
----
-
-# DeepDone Sync
+# Sync Phase
 
 ## Purpose
 
@@ -15,7 +9,7 @@ Recover fast from interruption without guessing.
 - `DD-STATE-001`, `DD-REVIEW-001`
 - `DD-OWN-001`, `DD-ADVANCE-001`, `DD-DRIFT-001`
 
-This skill is for resuming:
+This phase is for resuming:
 
 - a single epic, or
 - the active epic inside a multi-epic initiative

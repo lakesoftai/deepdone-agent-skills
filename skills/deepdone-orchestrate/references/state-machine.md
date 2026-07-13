@@ -9,43 +9,43 @@ Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed
 ### DD-STATE-001: Review pass owns completion
 
 - Rule: Only a latest Review result of `pass` may make an epic `complete` or roadmap state `complete-pending-advance`.
-- Applies to: `deepdone-orchestrate`, `deepdone-implement`, `deepdone-verify`, `deepdone-review`, `deepdone-advance`, `deepdone-sync`, `deepdone-commit`
+- Applies to: `deepdone-orchestrate`, `phase-implement`, `phase-verify`, `phase-review`, `deepdone-advance`, `phase-sync`, `phase-commit`
 - Evidence: Latest Review entry is `pass`, ledger Status is `complete`, and roadmap state is `complete-pending-advance` when a roadmap exists.
 
 ### DD-STATE-002: Changes invalidate review
 
 - Rule: Any behavior-changing implementation or fixup after review appends a newer pending Review entry and routes through verification before review.
-- Applies to: `deepdone-orchestrate`, `deepdone-implement`, `deepdone-fixup`, `deepdone-verify`, `deepdone-review`
+- Applies to: `deepdone-orchestrate`, `phase-implement`, `phase-fixup`, `phase-verify`, `phase-review`
 - Evidence: Latest Review entry is `pending`, ledger remains active, and Next Action names verification.
 
 ### DD-REVIEW-001: Review identifies exact paths
 
 - Rule: A passing review of dirty work records one exact reviewed change set with review ID, base HEAD, local manifest path, and repository-relative paths.
-- Applies to: `deepdone-review`, `deepdone-commit`, `deepdone-advance`, `deepdone-sync`
+- Applies to: `phase-review`, `phase-commit`, `deepdone-advance`, `phase-sync`
 - Evidence: Latest passing Review entry contains all required change-set fields and its manifest validates against current repository state.
 
 ### DD-COMMIT-001: Commit contains only reviewed unchanged paths
 
 - Rule: An actual commit may stage and commit only paths in the latest reviewed change set, and every path must be unchanged since capture.
-- Applies to: `deepdone-review`, `deepdone-commit`
+- Applies to: `phase-review`, `phase-commit`
 - Evidence: Pre-commit cached paths and resulting commit paths exactly equal the manifest path set.
 
 ### DD-COMMIT-002: Unowned staged paths block commit
 
 - Rule: Any staged path outside the reviewed change set blocks actual commit; unrelated unstaged and untracked paths remain untouched.
-- Applies to: `deepdone-commit`
+- Applies to: `phase-commit`
 - Evidence: Candidate reports staged-unowned paths and actual commit refuses while any exist.
 
 ### DD-ADVANCE-001: Dirty reviewed work blocks advance
 
 - Rule: A completed epic cannot advance while any path in its latest reviewed change set remains dirty.
-- Applies to: `deepdone-orchestrate`, `deepdone-advance`, `deepdone-sync`
+- Applies to: `deepdone-orchestrate`, `deepdone-advance`, `phase-sync`
 - Evidence: Advance stops with exact dirty reviewed paths until they are committed or explicitly abandoned outside DeepDone.
 
 ### DD-DRIFT-001: Ambiguous ownership blocks
 
 - Rule: Sync may repair mechanical state drift only when one work unit and its owned paths are clear; ambiguous ownership blocks.
-- Applies to: `deepdone-orchestrate`, `deepdone-review`, `deepdone-sync`
+- Applies to: `deepdone-orchestrate`, `phase-review`, `phase-sync`
 - Evidence: Reconciliation names one work unit and exact scope, or records a blocker without modifying ambiguous work.
 
 ## Durable States
@@ -122,7 +122,7 @@ Use first matching rule:
 4. `needs_advance_roadmap`: user invoked advance, or a later supervisor run finds a reviewed complete epic with a clean reviewed path set that must activate queued work or finalize roadmap completion.
 5. `needs_tech_decision`: next milestone has an unresolved material or version-sensitive choice.
 6. `ready_to_implement`: exactly one milestone is next with known acceptance and verification.
-7. `needs_verification`: implement or fixup changed code. This transition is mandatory even when the child ran fresh feedback checks; verify may reuse complete current evidence.
+7. `needs_verification`: implement or fixup changed code. This transition is mandatory even when the phase ran fresh feedback checks; verify may reuse complete current evidence.
 8. `needs_review`: latest implementation is verified and latest review is absent, pending, or stale.
 9. `needs_review_fix`: latest review is `fail` with accepted local findings.
 10. `ready_for_commit_candidate`: user requested a candidate or mode is `until-commit-candidate`, and review passed.
@@ -136,7 +136,7 @@ A classification describes repository state. It never grants authorization.
 
 | Event | Required result |
 |---|---|
-| Plan non-trivial work | One active ledger, plus roadmap only for multi-epic work |
+| Plan phase handles non-trivial work | One active ledger, plus roadmap only for multi-epic work |
 | Implement changes | Keep epic active; next state is verification |
 | Verification passes | Keep epic active; next state is review |
 | Verification fails | Stop, or allow one obvious local fix when mode permits |
@@ -151,13 +151,13 @@ Commit remains optional as an integration action, but direct advance cannot cros
 
 ## Work Ownership
 
-- Plan creates initial roadmap or ledger state.
-- Implement writes code but never declares epic completion.
-- Verify owns verification readiness.
-- Review owns review result and epic completion.
-- Fixup returns changed code to verification.
+- Plan phase creates initial roadmap or ledger state.
+- Implement phase writes code but never declares epic completion.
+- Verify phase owns verification readiness.
+- Review phase owns review result and epic completion.
+- Fixup phase returns changed code to verification.
 - Advance owns creation of the next epic ledger.
-- Commit, PR, and archive own only their named lifecycle actions.
+- Commit, PR, and Archive phases own only their named lifecycle actions.
 
 ## Drift Rules
 

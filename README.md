@@ -1,28 +1,41 @@
 # DeepDone Skills
 
-DeepDone is a skill package for agent-driven software work. It supports single-step or bounded end-to-end implementation from planning through a reviewed local commit. PR and archive actions remain separate and explicit.
+DeepDone is a two-skill package for agent-driven software work. It supports single-step or bounded end-to-end implementation from planning through a reviewed local commit. PR and archive actions remain separate and explicit.
 
-It keeps long work recoverable by using one roadmap, one active epic ledger, and narrow workflow skills.
+It keeps long work recoverable through one roadmap, one active epic ledger, and narrow internal workflow phases.
 
 ## Installation
 
-Install all DeepDone skills with the skills CLI:
+Install both public DeepDone skills with the skills CLI:
 
 ```bash
-npx skills add lakesoftai/deepdone-agent-skills --skill '*'
+npx skills add lakesoftai/deepdone-agent-skills --skill deepdone-orchestrate --skill deepdone-advance
 ```
 
 Install globally:
 
 ```bash
-npx skills add lakesoftai/deepdone-agent-skills --skill '*' -g
+npx skills add lakesoftai/deepdone-agent-skills --skill deepdone-orchestrate --skill deepdone-advance -g
 ```
 
 Use `-a` to install for a specific agent :
 
 ```bash
-npx skills add lakesoftai/deepdone-agent-skills --skill '*' -a codex
+npx skills add lakesoftai/deepdone-agent-skills --skill deepdone-orchestrate --skill deepdone-advance -a codex
 ```
+
+### Upgrade from the twelve-skill package
+
+The ten former child skills are no longer public entry points. If an existing selector still shows them, remove those stale installs before reinstalling the two public skills:
+
+```bash
+npx skills remove -y deepdone-plan deepdone-sync deepdone-decide deepdone-implement deepdone-verify deepdone-review deepdone-fixup deepdone-commit deepdone-pr deepdone-archive
+npx skills add lakesoftai/deepdone-agent-skills --skill deepdone-orchestrate --skill deepdone-advance
+```
+
+Add `-g` to both commands for a global install. Add `-a codex` to target only Codex. Use the CLI removal command instead of deleting directories by hand so install links and unused canonical copies are cleaned together. Global removal also cleans the selected skills from the global skill lock.
+
+After cleanup, direct calls such as `$deepdone-review` do not resolve. Use `$deepdone-orchestrate` with `Requested phase: review`. The same pattern applies to every removed child name.
 
 ## Start Here
 
@@ -51,10 +64,10 @@ Useful modes:
 - `until-commit`: create local commit after gates pass
 - `end-to-end`: full intake to local commit, bounded by safety gates
 
-Post-commit work uses direct skills:
+Post-commit work remains routed through the supervisor:
 
-- `deepdone-pr`: draft PR/MR text, optionally create or inspect CI only when explicitly requested
-- `deepdone-archive`: archive completed epic state after explicit request plus merge or release reference
+- `Use $deepdone-orchestrate to prepare a PR/MR draft for the current DeepDone work.`
+- `Use $deepdone-orchestrate to archive <ledger path> after merge/ref <reference>.`
 
 ## Workflow
 
@@ -66,8 +79,7 @@ requirements -> plan -> sync -> advance -> decide -> implement -> verify -> revi
 
 Loop path: after review, use `fixup`, then verify and review again as needed.
 
-The supervisor routes between skills. Direct child skill invocation is useful only when you already know the exact
-workflow stage.
+The supervisor classifies repository state, then loads exactly one matching internal phase. For targeted control, request the phase through the supervisor, such as `Use $deepdone-orchestrate. Requested phase: review.` The request never bypasses state or authorization gates.
 
 `pr` and `archive` are conservative post-commit steps:
 
@@ -76,20 +88,14 @@ workflow stage.
 - Archive needs explicit current-run user authority plus a merge commit, PR/MR URL, release tag, or equivalent reference.
 - Push, merge, deploy, and archive are never implicit.
 
-## Skills
+## Public Skills
 
-- `deepdone-orchestrate`: supervises routing and safety gates
-- `deepdone-plan`: classifies scope and creates roadmap or epic ledger
-- `deepdone-sync`: reconciles ledger, code, and git state after interruption
+- `deepdone-orchestrate`: supervises the complete workflow, internal phase routing, and safety gates
 - `deepdone-advance`: moves a roadmap from completed active epic to next queued epic
-- `deepdone-decide`: records one technical decision with evidence
-- `deepdone-implement`: executes exactly one milestone
-- `deepdone-verify`: runs smallest convincing checks and logs structured results
-- `deepdone-review`: reviews local diff for bugs, regressions, security, and test gaps
-- `deepdone-fixup`: fixes accepted local review findings
-- `deepdone-commit`: prepares or creates a gated local commit
-- `deepdone-pr`: prepares platform-neutral PR/MR drafts and inspects CI for existing PRs
-- `deepdone-archive`: archives completed epic state after explicit request plus merge or release reference
+
+## Internal Phases
+
+Plan, sync, decide, implement, verify, review, fixup, commit, PR, and archive remain bundled under `deepdone-orchestrate`. They are reference modules, not discoverable `SKILL.md` entry points. The supervisor loads only the phase required by classified repository state.
 
 ## Safety
 
@@ -128,7 +134,7 @@ Run:
 python3 scripts/doctor.py
 ```
 
-Doctor checks skill metadata, OpenAI manifests, invariant conformance, reviewed change-set schema compatibility, helper scripts, examples, logging removal, and unit tests.
+Doctor checks exactly two public skills, ten internal phases, skill metadata, OpenAI manifests, invariant conformance, reviewed change-set schema compatibility, helper scripts, examples, logging removal, and unit tests.
 
 ## Manual Cross-Agent Evaluation
 

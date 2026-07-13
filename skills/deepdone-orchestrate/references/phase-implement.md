@@ -1,10 +1,4 @@
----
-name: deepdone-implement
-slug: deepdone-implement
-description: Execute only the next milestone from the active epic ledger, keep scope tight, and update progress, verification, open loops, and next action as you go. If the task is intentionally small and has no ledger, treat the thread goal as one compact milestone.
----
-
-# DeepDone Implement
+# Implement Phase
 
 ## Conforms To
 
@@ -14,7 +8,7 @@ description: Execute only the next milestone from the active epic ledger, keep s
 
 Implement one milestone, not the whole universe.
 
-This skill is the execution engine for:
+This phase is the execution engine for:
 
 - a small task with no ledger, or
 - the currently active epic in a single-epic or multi-epic workflow
@@ -82,7 +76,7 @@ Before editing, confirm all are true:
 - acceptance check for that milestone is known
 - no unresolved blocker makes coding premature
 
-If the current milestone explicitly lists `research: <specific unknown>` and the corresponding decision has not yet been made, stop and use `DeepDone Decide` before writing code.
+If the current milestone explicitly lists `research: <specific unknown>` and the corresponding decision has not yet been made, stop and route through the Decide phase before writing code.
 
 ### Small task
 Before editing, confirm:
@@ -91,7 +85,7 @@ Before editing, confirm:
 - one clear acceptance check exists
 - no durable epic state is needed yet
 
-If scope expands materially during execution, stop and hand back to `DeepDone Plan` instead of inventing ad hoc ledger state.
+If scope expands materially during execution, stop and route through the Plan phase instead of inventing ad hoc ledger state.
 
 ## Scope Rules
 
@@ -122,10 +116,10 @@ If the current milestone finishes all planned implementation work:
 
 - keep epic ledger `Status` as `active`
 - keep roadmap entry and `Active Epic.state` as `active`
-- set `Next Action` to run `$deepdone-verify`
+- set `Next Action` to run the Verify phase through `$deepdone-orchestrate`
 - do not mark the epic complete or advanceable
 
-Only `$deepdone-review` may mark an epic `complete` and roadmap state `complete-pending-advance` after a passing review.
+Only the Review phase may mark an epic `complete` and roadmap state `complete-pending-advance` after a passing review.
 
 If the epic is blocked:
 
@@ -136,7 +130,7 @@ If the epic is blocked:
 ## Plan Mode Policy
 
 Do not switch to broad plan mode by default.
-This skill assumes planning is already done.
+This phase assumes planning is already done.
 Only re-plan if:
 - current milestone is underspecified
 - ledger and code disagree materially
@@ -157,7 +151,7 @@ If re-planning is needed, stop execution, record the issue, and return a recomme
 8. If more work remains in the epic, set one exact `Next Action` inside the next unfinished milestone.
 9. If implementation work is finished, keep epic active and route to verification.
 
-Checks run here are implementation feedback, not the workflow verification gate. Route to `$deepdone-verify` after code changes even when these checks pass. Verify may reuse fresh complete evidence instead of rerunning an identical command.
+Checks run here are implementation feedback, not the workflow verification gate. Route to the Verify phase after code changes even when these checks pass. Verify may reuse fresh complete evidence instead of rerunning an identical command.
 
 ## Done Rule
 
@@ -175,7 +169,7 @@ Milestone is done only when:
 - required targeted checks were actually run or explicitly blocked
 - ledger reflects new truth
 
-This skill never declares an epic done. Verification and review remain required even when all implementation milestones are checked.
+This phase never declares an epic done. Verification and review remain required even when all implementation milestones are checked.
 
 ## Output
 

@@ -1,23 +1,15 @@
 # DeepDone Skills
 
-Agent-driven workflow management for software projects. Each skill does one thing. `deepdone-orchestrate` routes between them.
+Agent-driven workflow management for software projects. Two public skills expose the workflow. `deepdone-orchestrate` routes between bundled internal phases.
 
 ## Skills
 
 | Skill | Role |
 |---|---|
-| `deepdone-orchestrate` | Supervisor: classifies state, routes to child skills, enforces mode budgets and safety gates |
-| `deepdone-plan` | Classify scope (small task / single epic / multi-epic), create roadmaps and epic ledgers |
-| `deepdone-sync` | Recover state after interruption, reconcile ledger vs code vs git |
+| `deepdone-orchestrate` | Supervisor: classifies state, loads one internal phase, enforces mode budgets and safety gates |
 | `deepdone-advance` | Move multi-epic initiative to next queued epic |
-| `deepdone-decide` | Research and record one technical choice with evidence |
-| `deepdone-implement` | Execute exactly one milestone |
-| `deepdone-verify` | Verify changes: smallest check first, log exact commands |
-| `deepdone-review` | Skeptical local diff review: correctness, regressions, security, overscope |
-| `deepdone-fixup` | Fix accepted local review findings, stop on product/architecture judgment |
-| `deepdone-commit` | Safe git commit with gate checks, dangerous-file detection |
-| `deepdone-pr` | Prepare PR/MR draft, optional explicit creation, or inspect existing PR/MR CI |
-| `deepdone-archive` | Archive completed epic state after explicit current-run request plus merge or release reference |
+
+Internal orchestrator phases are plan, sync, decide, implement, verify, review, fixup, commit, PR, and archive. They live as one-level reference modules under `deepdone-orchestrate`; they are not selector-visible skills.
 
 ## Workflow
 
@@ -29,12 +21,12 @@ requirements -> plan -> sync -> advance -> decide -> implement -> verify -> revi
                                                          +-- review loop --+
 ```
 
-The orchestrator (`deepdone-orchestrate`) drives this state machine. It inspects repo state, classifies the current position, and invokes the correct child skill.
+The orchestrator (`deepdone-orchestrate`) drives this state machine. It inspects repo state, classifies the current position, and loads exactly one matching internal phase.
 
 `pr` and `archive` are post-commit lifecycle steps. They are not automatic side effects of commit:
 
-- `deepdone-pr` drafts PR/MR text by default. Creation requires explicit approval plus clear remote, target branch, branch publish state, and repo-native tooling.
-- `deepdone-archive` moves completed epic state only after explicit current-run archive authority plus a clear merge or release reference.
+- The PR phase drafts PR/MR text by default. Creation requires explicit approval plus clear remote, target branch, branch publish state, and repo-native tooling.
+- The archive phase moves completed epic state only after explicit current-run archive authority plus a clear merge or release reference.
 
 ## Quick Start
 
@@ -55,14 +47,16 @@ Mode: end-to-end.
 For post-commit handoff:
 
 ```
-Use $deepdone-pr.
+Use $deepdone-orchestrate.
+Requested phase: PR.
 Prepare a PR/MR draft for the current DeepDone work.
 ```
 
 For completed work archival:
 
 ```
-Use $deepdone-archive.
+Use $deepdone-orchestrate.
+Requested phase: archive.
 Archive <ledger path> after merge/ref <PR URL, merge SHA, or release tag>.
 ```
 

@@ -1,10 +1,4 @@
----
-name: deepdone-archive
-slug: deepdone-archive
-description: Archive a completed DeepDone epic after an explicit current-run archive request and a clear merge or release reference. Update roadmap pointers and preserve post-merge verification truth.
----
-
-# DeepDone Archive
+# Archive Phase
 
 ## Conforms To
 
@@ -14,7 +8,7 @@ description: Archive a completed DeepDone epic after an explicit current-run arc
 
 Close the post-commit loop after work has merged or otherwise been released.
 
-This skill archives completed epic state.
+This phase archives completed epic state.
 It is not roadmap advancement, PR creation, merge, or deploy.
 
 Archive only when the current user explicitly requests it, directly or through supervisor context carrying `archive: allowed` with source `exact user request`.

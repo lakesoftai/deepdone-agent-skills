@@ -1,10 +1,4 @@
----
-name: deepdone-verify
-slug: deepdone-verify
-description: Verify changes with smallest relevant checks first, widen only when shared impact requires it, and log exact commands and outcomes. Use before claiming a milestone or task is done.
----
-
-# DeepDone Verify
+# Verify Phase
 
 ## Conforms To
 
@@ -96,7 +90,7 @@ Broaden verification when change touches:
 4. Decide whether broader checks are needed.
 5. Run broader checks only where justified.
 6. Log every command and outcome with `result:`.
-7. If required checks pass, keep epic `Status: active` and set `Next Action` to run `$deepdone-review`.
+7. If required checks pass, keep epic `Status: active` and set `Next Action` to run the Review phase through `$deepdone-orchestrate`.
 8. If a required check fails or blocks, record the issue in `Open Loops`, keep review pending, and set one exact fix or unblock action.
 9. State residual risk if coverage still incomplete.
 

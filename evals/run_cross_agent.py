@@ -128,7 +128,7 @@ def passing_ledger(head: str, paths: list[str], title: str = "Reviewed Demo") ->
 
 
 def capture_manifest(root: Path, ledger: str) -> str:
-    script = root / ".agents/skills/deepdone-review/scripts/capture_reviewed_change_set.py"
+    script = root / ".agents/skills/deepdone-orchestrate/scripts/capture_reviewed_change_set.py"
     result = run([sys.executable, str(script), "--ledger", ledger], root, check=True)
     return result.stdout.strip()
 
@@ -146,8 +146,16 @@ def seed_probe(root: Path) -> dict[str, object]:
 
 
 def grade_probe(root: Path, state: dict[str, object]) -> list[str]:
+    errors: list[str] = []
     path = root / "probe.txt"
-    return [] if path.exists() and path.read_text(encoding="utf-8").strip() == state["token"] else ["project-local skill probe failed"]
+    if not path.exists() or path.read_text(encoding="utf-8").strip() != state["token"]:
+        errors.append("project-local skill probe failed")
+    expected = {"deepdone-orchestrate", "deepdone-advance", "deepdone-eval-probe"}
+    for base in (root / ".agents/skills", root / ".claude/skills"):
+        discovered = {path.parent.name for path in base.glob("deepdone-*/SKILL.md")}
+        if discovered != expected:
+            errors.append(f"unexpected DeepDone selector entries under {base}: {sorted(discovered)}")
+    return errors
 
 
 def seed_intake(root: Path) -> dict[str, object]:
@@ -353,19 +361,19 @@ def scenarios() -> list[Scenario]:
         ),
         Scenario(
             "unrelated-unstaged-excluded",
-            "Use $deepdone-commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Leave unrelated work untouched.",
+            "Use $deepdone-orchestrate. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Leave unrelated work untouched.",
             lambda root: seed_with_scratch(root, staged=False, mutate_reviewed=False),
             grade_exact_commit,
         ),
         Scenario(
             "changed-reviewed-path-blocks",
-            "Use $deepdone-commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Stop on any stale evidence.",
+            "Use $deepdone-orchestrate. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Stop on any stale evidence.",
             lambda root: seed_with_scratch(root, staged=False, mutate_reviewed=True),
             grade_no_commit,
         ),
         Scenario(
             "unrelated-staged-path-blocks",
-            "Use $deepdone-commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Stop on staged unowned work.",
+            "Use $deepdone-orchestrate. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Stop on staged unowned work.",
             lambda root: seed_with_scratch(root, staged=True, mutate_reviewed=False),
             grade_no_commit,
         ),

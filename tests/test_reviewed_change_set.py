@@ -11,9 +11,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CAPTURE_SCRIPT = ROOT / "skills/deepdone-review/scripts/capture_reviewed_change_set.py"
+CAPTURE_SCRIPT = ROOT / "skills/deepdone-orchestrate/scripts/capture_reviewed_change_set.py"
 ADVANCE_SCRIPT = ROOT / "skills/deepdone-advance/scripts/check_reviewed_change_set.py"
-COMMIT_SCRIPT = ROOT / "skills/deepdone-commit/scripts/commit_progress.py"
+COMMIT_SCRIPT = ROOT / "skills/deepdone-orchestrate/scripts/commit_progress.py"
 
 
 def load_module(name: str, path: Path):

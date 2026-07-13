@@ -54,6 +54,12 @@ class CrossAgentEvaluationTests(unittest.TestCase):
                 self.assertTrue((root / ".git").is_dir())
                 self.assertTrue((root / ".agents/skills/deepdone-orchestrate/SKILL.md").is_file())
                 self.assertTrue((root / ".claude/skills/deepdone-orchestrate/SKILL.md").is_file())
+                expected = {"deepdone-orchestrate", "deepdone-advance"}
+                if scenario.name == "skill-discovery":
+                    expected.add("deepdone-eval-probe")
+                for base in (root / ".agents/skills", root / ".claude/skills"):
+                    discovered = {path.parent.name for path in base.glob("deepdone-*/SKILL.md")}
+                    self.assertEqual(discovered, expected)
 
     def test_codex_adapter_is_ephemeral_and_project_scoped(self) -> None:
         command = self.runner.adapter_command("codex", Path("/tmp/fixture"), "prompt", Path("/tmp/final.json"), "model-x", 1.0)
@@ -64,13 +70,13 @@ class CrossAgentEvaluationTests(unittest.TestCase):
         self.assertIn("model-x", command)
 
     def test_claude_adapter_loads_project_settings_only(self) -> None:
-        command = self.runner.adapter_command("claude", Path("/tmp/fixture"), "Use $deepdone-review.", Path("/tmp/final.json"), "model-y", 1.0)
+        command = self.runner.adapter_command("claude", Path("/tmp/fixture"), "Use $deepdone-orchestrate.", Path("/tmp/final.json"), "model-y", 1.0)
         joined = " ".join(command)
         self.assertIn("--setting-sources project", joined)
         self.assertIn("--no-session-persistence", command)
         self.assertIn("--json-schema", command)
         self.assertIn("model-y", command)
-        self.assertIn("Use /deepdone-review.", command)
+        self.assertIn("Use /deepdone-orchestrate.", command)
 
 
 if __name__ == "__main__":

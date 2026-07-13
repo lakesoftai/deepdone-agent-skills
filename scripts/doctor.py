@@ -12,22 +12,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SKILLS = [
-    "deepdone-advance",
-    "deepdone-archive",
-    "deepdone-commit",
-    "deepdone-decide",
-    "deepdone-fixup",
-    "deepdone-implement",
-    "deepdone-orchestrate",
-    "deepdone-plan",
-    "deepdone-pr",
-    "deepdone-review",
-    "deepdone-sync",
-    "deepdone-verify",
-]
-
-IMPLICIT_ENTRY_SKILLS = {"deepdone-advance", "deepdone-orchestrate"}
+PUBLIC_SKILLS = ["deepdone-advance", "deepdone-orchestrate"]
+PHASES = {
+    "phase-archive": "skills/deepdone-orchestrate/references/phase-archive.md",
+    "phase-commit": "skills/deepdone-orchestrate/references/phase-commit.md",
+    "phase-decide": "skills/deepdone-orchestrate/references/phase-decide.md",
+    "phase-fixup": "skills/deepdone-orchestrate/references/phase-fixup.md",
+    "phase-implement": "skills/deepdone-orchestrate/references/phase-implement.md",
+    "phase-plan": "skills/deepdone-orchestrate/references/phase-plan.md",
+    "phase-pr": "skills/deepdone-orchestrate/references/phase-pr.md",
+    "phase-review": "skills/deepdone-orchestrate/references/phase-review.md",
+    "phase-sync": "skills/deepdone-orchestrate/references/phase-sync.md",
+    "phase-verify": "skills/deepdone-orchestrate/references/phase-verify.md",
+}
+CONTRACT_SUBJECTS = set(PUBLIC_SKILLS).union(PHASES)
+IMPLICIT_ENTRY_SKILLS = set(PUBLIC_SKILLS)
 ORCHESTRATOR_MAX_LINES = 250
 REQUIRED_INVARIANT_IDS = {
     "DD-ADVANCE-001",
@@ -48,15 +47,15 @@ INVARIANT_ID_RE = re.compile(r"^DD-[A-Z]+-[0-9]{3}$")
 HELPER_SCRIPTS = [
     "evals/run_cross_agent.py",
     "skills/deepdone-advance/scripts/check_reviewed_change_set.py",
-    "skills/deepdone-commit/scripts/commit_progress.py",
+    "skills/deepdone-orchestrate/scripts/commit_progress.py",
     "skills/deepdone-orchestrate/scripts/inspect_deepdone_state.py",
-    "skills/deepdone-review/scripts/capture_reviewed_change_set.py",
+    "skills/deepdone-orchestrate/scripts/capture_reviewed_change_set.py",
 ]
 
 MANIFEST_SCHEMA_SCRIPTS = [
     "skills/deepdone-advance/scripts/check_reviewed_change_set.py",
-    "skills/deepdone-commit/scripts/commit_progress.py",
-    "skills/deepdone-review/scripts/capture_reviewed_change_set.py",
+    "skills/deepdone-orchestrate/scripts/commit_progress.py",
+    "skills/deepdone-orchestrate/scripts/capture_reviewed_change_set.py",
 ]
 
 EXAMPLES = [
@@ -91,7 +90,12 @@ def frontmatter(text: str) -> dict[str, str]:
 
 
 def check_skill_metadata(errors: list[str]) -> None:
-    for skill in SKILLS:
+    discovered = {path.parent.name for path in (ROOT / "skills").glob("*/SKILL.md")}
+    expected_skills = set(PUBLIC_SKILLS)
+    if discovered != expected_skills:
+        errors.append(f"public skill set mismatch: expected {sorted(expected_skills)}, found {sorted(discovered)}")
+
+    for skill in PUBLIC_SKILLS:
         skill_dir = ROOT / "skills" / skill
         skill_md = skill_dir / "SKILL.md"
         text = read_text(skill_md)
@@ -124,14 +128,29 @@ def check_skill_metadata(errors: list[str]) -> None:
                 errors.append(f"{skill}: agents/openai.yaml missing allow_implicit_invocation policy")
             else:
                 actual = match.group(1) == "true"
-                expected = skill in IMPLICIT_ENTRY_SKILLS
-                if actual != expected:
-                    errors.append(f"{skill}: allow_implicit_invocation must be {str(expected).lower()}")
+                expected_policy = skill in IMPLICIT_ENTRY_SKILLS
+                if actual != expected_policy:
+                    errors.append(f"{skill}: allow_implicit_invocation must be {str(expected_policy).lower()}")
+
+
+def check_phase_modules(errors: list[str]) -> None:
+    for phase, rel in PHASES.items():
+        text = read_text(ROOT / rel)
+        if not text:
+            errors.append(f"{phase}: missing phase reference {rel}")
+            continue
+        if text.startswith("---\n"):
+            errors.append(f"{phase}: phase reference must not contain skill frontmatter")
+        title = phase.removeprefix("phase-").replace("-", " ").title()
+        title = "PR" if title == "Pr" else title
+        expected_heading = f"# {title} Phase"
+        if expected_heading not in text:
+            errors.append(f"{phase}: missing heading {expected_heading}")
 
 
 def check_skill_references(errors: list[str]) -> None:
     link_re = re.compile(r"\]\((references/[^)#]+)(?:#[^)]+)?\)")
-    for skill in SKILLS:
+    for skill in PUBLIC_SKILLS:
         skill_dir = ROOT / "skills" / skill
         text = read_text(skill_dir / "SKILL.md")
         linked = set(link_re.findall(text))
@@ -197,12 +216,12 @@ def parse_contract_invariants(errors: list[str]) -> tuple[dict[str, set[str]], s
                 if not re.search(rf"^-\s+{field}:\s+\S", block, flags=re.MULTILINE):
                     errors.append(f"{invariant_id}: missing {field}")
             applies_match = re.search(r"^-\s+Applies to:\s+(.+)$", block, flags=re.MULTILINE)
-            applies = set(re.findall(r"`(deepdone-[a-z0-9-]+)`", applies_match.group(1))) if applies_match else set()
+            applies = set(re.findall(r"`((?:deepdone|phase)-[a-z0-9-]+)`", applies_match.group(1))) if applies_match else set()
             if not applies:
-                errors.append(f"{invariant_id}: has no affected skills")
-            unknown = applies.difference(SKILLS)
+                errors.append(f"{invariant_id}: has no affected contract subjects")
+            unknown = applies.difference(CONTRACT_SUBJECTS)
             if unknown:
-                errors.append(f"{invariant_id}: unknown affected skills: {sorted(unknown)}")
+                errors.append(f"{invariant_id}: unknown affected contract subjects: {sorted(unknown)}")
             active[invariant_id] = applies
     return active, retired
 
@@ -217,25 +236,29 @@ def check_invariant_conformance(errors: list[str]) -> None:
     if unexpected:
         errors.append(f"unregistered invariant IDs: {sorted(unexpected)}")
 
-    skill_refs: dict[str, set[str]] = {}
-    for skill in SKILLS:
-        text = read_text(ROOT / "skills" / skill / "SKILL.md")
+    subject_paths = {
+        **{skill: f"skills/{skill}/SKILL.md" for skill in PUBLIC_SKILLS},
+        **PHASES,
+    }
+    subject_refs: dict[str, set[str]] = {}
+    for subject, rel in subject_paths.items():
+        text = read_text(ROOT / rel)
         refs = set(re.findall(r"`(DD-[A-Z]+-[0-9]{3})`", markdown_section(text, "Conforms To")))
-        skill_refs[skill] = refs
+        subject_refs[subject] = refs
         unknown = refs.difference(active).difference(retired)
         if unknown:
-            errors.append(f"{skill}: references unknown invariants: {sorted(unknown)}")
+            errors.append(f"{subject}: references unknown invariants: {sorted(unknown)}")
         retired_refs = refs.intersection(retired)
         if retired_refs:
-            errors.append(f"{skill}: references retired invariants: {sorted(retired_refs)}")
+            errors.append(f"{subject}: references retired invariants: {sorted(retired_refs)}")
 
-    for invariant_id, affected_skills in active.items():
-        for skill in affected_skills:
-            if invariant_id not in skill_refs.get(skill, set()):
-                errors.append(f"{skill}: missing declared invariant {invariant_id}")
-        for skill, refs in skill_refs.items():
-            if invariant_id in refs and skill not in affected_skills:
-                errors.append(f"{skill}: references {invariant_id} but contract does not list it")
+    for invariant_id, affected_subjects in active.items():
+        for subject in affected_subjects:
+            if invariant_id not in subject_refs.get(subject, set()):
+                errors.append(f"{subject}: missing declared invariant {invariant_id}")
+        for subject, refs in subject_refs.items():
+            if invariant_id in refs and subject not in affected_subjects:
+                errors.append(f"{subject}: references {invariant_id} but contract does not list it")
 
 
 def check_manifest_schema_versions(errors: list[str]) -> None:
@@ -349,6 +372,7 @@ def run_unit_tests(errors: list[str]) -> None:
 def main() -> int:
     errors: list[str] = []
     check_skill_metadata(errors)
+    check_phase_modules(errors)
     check_skill_references(errors)
     check_orchestrator_budget(errors)
     check_invariant_conformance(errors)
@@ -365,7 +389,8 @@ def main() -> int:
         return 1
 
     print("DeepDone doctor: pass")
-    print(f"- skills checked: {len(SKILLS)}")
+    print(f"- public skills checked: {len(PUBLIC_SKILLS)}")
+    print(f"- internal phases checked: {len(PHASES)}")
     print(f"- helper scripts checked: {len(HELPER_SCRIPTS)}")
     print(f"- invariants checked: {len(REQUIRED_INVARIANT_IDS)}")
     print(f"- examples checked: {len(EXAMPLES)}")
