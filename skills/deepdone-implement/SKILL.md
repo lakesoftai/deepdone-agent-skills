@@ -6,6 +6,10 @@ description: Execute only the next milestone from the active epic ledger, keep s
 
 # DeepDone Implement
 
+## Conforms To
+
+- `DD-STATE-001`, `DD-STATE-002`
+
 ## Purpose
 
 Implement one milestone, not the whole universe.

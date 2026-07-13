@@ -6,6 +6,10 @@ description: Verify changes with smallest relevant checks first, widen only when
 
 # DeepDone Verify
 
+## Conforms To
+
+- `DD-STATE-001`, `DD-STATE-002`
+
 ## Purpose
 
 Make verification deterministic and scoped.

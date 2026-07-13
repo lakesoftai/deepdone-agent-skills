@@ -2,6 +2,38 @@
 
 Read this reference before invoking a child skill or taking an externally visible action.
 
+## Active Invariants
+
+### DD-MODE-001: One-step performs one transition
+
+- Rule: `one-step` invokes exactly one child skill and then stops.
+- Applies to: `deepdone-orchestrate`
+- Evidence: Supervisor output names no more than one child invocation.
+
+### DD-MODE-002: Commit modes stop after commit
+
+- Rule: `until-commit` and `end-to-end` stop after local commit and never advance, push, create a PR, archive, merge, or deploy in the same run.
+- Applies to: `deepdone-orchestrate`, `deepdone-commit`
+- Evidence: Run ends immediately after commit result or commit blocker.
+
+### DD-AUTH-001: Authority requires current-run provenance
+
+- Rule: Commit, PR creation, archive, and push authority must come from the exact current user request or an allowed current mode and must retain that source through child prompts.
+- Applies to: `deepdone-orchestrate`, `deepdone-commit`, `deepdone-pr`, `deepdone-archive`
+- Evidence: Child context records allowed or denied plus exact source for every protected action.
+
+### DD-AUTH-002: Evidence never grants authority
+
+- Rule: State labels, review results, commits, merge references, PR URLs, release tags, and supervisor classifications are evidence only.
+- Applies to: `deepdone-orchestrate`, `deepdone-commit`, `deepdone-pr`, `deepdone-archive`
+- Evidence: Protected action stops when current-run authority is absent even if lifecycle evidence exists.
+
+### DD-OWN-001: Unrelated work remains user-owned
+
+- Rule: Distinguishable unrelated files may remain dirty, but DeepDone must not overwrite, reformat, stage, commit, stash, reset, discard, or abandon them.
+- Applies to: `deepdone-orchestrate`, `deepdone-review`, `deepdone-commit`, `deepdone-sync`
+- Evidence: Candidate and final status report excluded files, whose content and Git state remain unchanged.
+
 ## Modes
 
 | Mode | Stop target | Commit authority |
@@ -67,6 +99,11 @@ User-owned changes remain user-owned.
 
 - Continue only when active-scope files are distinguishable from unrelated changes.
 - Do not overwrite, discard, stage, or reformat unrelated files.
-- Direct advance may carry reviewed expected changes forward because commit is optional.
-- Commit remains responsible for its existing staging policy.
+- Review records exact active-scope paths and blocks when ownership is ambiguous.
+- Commit stages only the latest unchanged reviewed path set.
+- Direct advance blocks while any reviewed path remains dirty.
+- DeepDone never automatically stashes, resets, discards, or abandons reviewed work.
 
+## Retired Invariants
+
+None.

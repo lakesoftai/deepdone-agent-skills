@@ -10,6 +10,13 @@ description: Supervise DeepDone work from requirements intake through planning, 
 
 Inspect repository truth, classify current workflow state, invoke one narrow child skill at a time, and stop at the selected mode boundary or safety gate.
 
+## Conforms To
+
+- `DD-STATE-001`, `DD-STATE-002`
+- `DD-MODE-001`, `DD-MODE-002`
+- `DD-AUTH-001`, `DD-AUTH-002`
+- `DD-OWN-001`, `DD-ADVANCE-001`, `DD-DRIFT-001`
+
 ## Required References
 
 Before classifying or routing, read:
@@ -62,7 +69,7 @@ Inspect:
 6. explicit roadmap or ledger path
 7. `notes/roadmap.md` and its active ledger
 8. one obvious active ledger when no roadmap selects one
-9. milestones, Verification Log, Review, Open Loops, Next Action, and Status
+9. milestones, Verification Log, Review, reviewed change-set manifest, Open Loops, Next Action, and Status
 10. current repository files and latest check evidence
 
 Use `scripts/inspect_deepdone_state.py` when available for stable signals. Verify its output against source files before acting.
@@ -121,6 +128,8 @@ Continue only when:
 - selected mode includes that transition
 - child remained inside scope
 - no hard stop applies
+
+Before routing to advance, stop when any path in the latest passing Review entry remains dirty.
 
 Allow at most one automatic verification fix and one automatic review-fix cycle per run.
 

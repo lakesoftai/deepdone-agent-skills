@@ -2,6 +2,52 @@
 
 Read this reference before classifying or routing DeepDone work. This file is the authoritative lifecycle contract.
 
+Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed, move its block to `## Retired Invariants` and keep its ID.
+
+## Active Invariants
+
+### DD-STATE-001: Review pass owns completion
+
+- Rule: Only a latest Review result of `pass` may make an epic `complete` or roadmap state `complete-pending-advance`.
+- Applies to: `deepdone-orchestrate`, `deepdone-implement`, `deepdone-verify`, `deepdone-review`, `deepdone-advance`, `deepdone-sync`, `deepdone-commit`
+- Evidence: Latest Review entry is `pass`, ledger Status is `complete`, and roadmap state is `complete-pending-advance` when a roadmap exists.
+
+### DD-STATE-002: Changes invalidate review
+
+- Rule: Any behavior-changing implementation or fixup after review appends a newer pending Review entry and routes through verification before review.
+- Applies to: `deepdone-orchestrate`, `deepdone-implement`, `deepdone-fixup`, `deepdone-verify`, `deepdone-review`
+- Evidence: Latest Review entry is `pending`, ledger remains active, and Next Action names verification.
+
+### DD-REVIEW-001: Review identifies exact paths
+
+- Rule: A passing review of dirty work records one exact reviewed change set with review ID, base HEAD, local manifest path, and repository-relative paths.
+- Applies to: `deepdone-review`, `deepdone-commit`, `deepdone-advance`, `deepdone-sync`
+- Evidence: Latest passing Review entry contains all required change-set fields and its manifest validates against current repository state.
+
+### DD-COMMIT-001: Commit contains only reviewed unchanged paths
+
+- Rule: An actual commit may stage and commit only paths in the latest reviewed change set, and every path must be unchanged since capture.
+- Applies to: `deepdone-review`, `deepdone-commit`
+- Evidence: Pre-commit cached paths and resulting commit paths exactly equal the manifest path set.
+
+### DD-COMMIT-002: Unowned staged paths block commit
+
+- Rule: Any staged path outside the reviewed change set blocks actual commit; unrelated unstaged and untracked paths remain untouched.
+- Applies to: `deepdone-commit`
+- Evidence: Candidate reports staged-unowned paths and actual commit refuses while any exist.
+
+### DD-ADVANCE-001: Dirty reviewed work blocks advance
+
+- Rule: A completed epic cannot advance while any path in its latest reviewed change set remains dirty.
+- Applies to: `deepdone-orchestrate`, `deepdone-advance`, `deepdone-sync`
+- Evidence: Advance stops with exact dirty reviewed paths until they are committed or explicitly abandoned outside DeepDone.
+
+### DD-DRIFT-001: Ambiguous ownership blocks
+
+- Rule: Sync may repair mechanical state drift only when one work unit and its owned paths are clear; ambiguous ownership blocks.
+- Applies to: `deepdone-orchestrate`, `deepdone-review`, `deepdone-sync`
+- Evidence: Reconciliation names one work unit and exact scope, or records a blocker without modifying ambiguous work.
+
 ## Durable States
 
 Epic ledger `## Status` values:
@@ -28,12 +74,22 @@ New ledgers contain `## Review` after `## Verification Log`:
 
 - reviewed-at: 2026-07-11T12:00:00Z
   result: pass
+  review-id: 20260711T120000Z-a1b2c3d4
+  base-head: 0123456789abcdef0123456789abcdef01234567
+  manifest: .deepdone/reviews/20260711T120000Z-a1b2c3d4.json
+  paths:
+    - src/example.py
+    - notes/epics/2026-07-11-example.md
   notes: no blocking findings
 ```
 
 Allowed results: `pending`, `pass`, `fail`, `blocked`.
 
 Latest entry wins. Missing `## Review` means `pending`. Add the section during review or sync when needed; do not require bulk migration.
+
+Legacy passing entries without change-set fields remain readable. They may describe completed work, but they cannot authorize actual commit of dirty work until review runs again and captures a manifest.
+
+The Markdown entry is the agent contract and human-readable path record. The ignored JSON manifest is deterministic gate evidence only. Manifest schema version is `1`.
 
 Any behavior-changing implementation or fixup after review makes the previous review stale. Route through verification and review again.
 
@@ -63,7 +119,7 @@ Use first matching rule:
 1. `blocked_needs_user`: STOP file, ambiguous active work, unexpected dirty files, missing acceptance, risky judgment, missing required authorization, or no safe progress.
 2. `needs_intake`: non-trivial requirements exist and no suitable ledger exists.
 3. `needs_resume`: one recoverable durable-state mismatch exists.
-4. `needs_advance_roadmap`: user invoked advance, or a later supervisor run finds a reviewed complete epic that must activate queued work or finalize roadmap completion, and current mode does not require commit first.
+4. `needs_advance_roadmap`: user invoked advance, or a later supervisor run finds a reviewed complete epic with a clean reviewed path set that must activate queued work or finalize roadmap completion.
 5. `needs_tech_decision`: next milestone has an unresolved material or version-sensitive choice.
 6. `ready_to_implement`: exactly one milestone is next with known acceptance and verification.
 7. `needs_verification`: implement or fixup changed code. This transition is mandatory even when the child ran fresh feedback checks; verify may reuse complete current evidence.
@@ -91,7 +147,7 @@ A classification describes repository state. It never grants authorization.
 | Advance | Activate exactly one queued epic, or complete roadmap |
 | Commit | Stop in `until-commit` and `end-to-end`; never auto-advance |
 
-Commit is optional before advance. Direct advance may proceed with expected reviewed epic changes still dirty, but must stop for unrelated, unreviewed, or ambiguous changes.
+Commit remains optional as an integration action, but direct advance cannot cross dirty reviewed work. Commit the reviewed set or explicitly abandon it before activating the next epic.
 
 ## Work Ownership
 
@@ -114,6 +170,12 @@ Recover with sync when all are true:
 Block instead when any are true:
 
 - multiple plausible active ledgers or roadmaps exist
-- roadmap points to one epic while current changes clearly belong to another, except the immediately preceding reviewed epic plus deterministic advance-state files after an explicit advance
-- dirty files are unrelated or ownership is unknown
+- roadmap points to one epic while current changes clearly belong to another
+- dirty-file ownership is unknown
 - reconciling would require product, architecture, security, migration, or data-risk judgment
+
+Clearly unrelated dirty files may coexist with active work only when active-scope ownership is provable. Review and commit must exclude and preserve them.
+
+## Retired Invariants
+
+None.

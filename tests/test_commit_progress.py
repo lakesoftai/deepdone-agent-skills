@@ -231,6 +231,36 @@ class CommitProgressTests(unittest.TestCase):
         self.assertEqual(lines[-1], "notes: result 4")
         self.assertEqual(len(lines), 9)
 
+    def test_review_entry_with_many_paths_is_not_truncated(self) -> None:
+        paths = "\n".join(f"    - src/path-{index}.py" for index in range(60))
+        ledger = (
+            "# Demo\n\n## Review\n\n"
+            "- reviewed-at: now\n"
+            "  result: pass\n"
+            "  review-id: 20260711T120000Z-a1b2c3d4\n"
+            "  base-head: deadbeef\n"
+            "  manifest: .deepdone/reviews/demo.json\n"
+            "  paths:\n"
+            f"{paths}\n"
+            "  notes: no blocking findings\n"
+        )
+
+        lines = self.commit_progress.review_lines(ledger)
+
+        self.assertIn("result: pass", lines)
+        self.assertEqual(sum(line.startswith("- src/path-") for line in lines), 60)
+
+    def test_blocker_words_in_reviewed_path_do_not_block(self) -> None:
+        review = [
+            "- reviewed-at: now",
+            "result: pass",
+            "paths:",
+            "- tests/test_failed_login.py",
+            "notes: no blocking findings",
+        ]
+
+        self.assertFalse(self.commit_progress.review_has_blocker(review))
+
 
 if __name__ == "__main__":
     unittest.main()

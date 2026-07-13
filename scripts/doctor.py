@@ -29,10 +29,34 @@ SKILLS = [
 
 IMPLICIT_ENTRY_SKILLS = {"deepdone-advance", "deepdone-orchestrate"}
 ORCHESTRATOR_MAX_LINES = 250
+REQUIRED_INVARIANT_IDS = {
+    "DD-ADVANCE-001",
+    "DD-AUTH-001",
+    "DD-AUTH-002",
+    "DD-COMMIT-001",
+    "DD-COMMIT-002",
+    "DD-DRIFT-001",
+    "DD-MODE-001",
+    "DD-MODE-002",
+    "DD-OWN-001",
+    "DD-REVIEW-001",
+    "DD-STATE-001",
+    "DD-STATE-002",
+}
+INVARIANT_ID_RE = re.compile(r"^DD-[A-Z]+-[0-9]{3}$")
 
 HELPER_SCRIPTS = [
+    "evals/run_cross_agent.py",
+    "skills/deepdone-advance/scripts/check_reviewed_change_set.py",
     "skills/deepdone-commit/scripts/commit_progress.py",
     "skills/deepdone-orchestrate/scripts/inspect_deepdone_state.py",
+    "skills/deepdone-review/scripts/capture_reviewed_change_set.py",
+]
+
+MANIFEST_SCHEMA_SCRIPTS = [
+    "skills/deepdone-advance/scripts/check_reviewed_change_set.py",
+    "skills/deepdone-commit/scripts/commit_progress.py",
+    "skills/deepdone-review/scripts/capture_reviewed_change_set.py",
 ]
 
 EXAMPLES = [
@@ -130,6 +154,103 @@ def check_orchestrator_budget(errors: list[str]) -> None:
         errors.append(f"deepdone-orchestrate: {line_count} lines exceeds {ORCHESTRATOR_MAX_LINES}")
 
 
+def markdown_section(text: str, name: str) -> str:
+    match = re.search(rf"^##\s+{re.escape(name)}\s*$", text, flags=re.MULTILINE)
+    if not match:
+        return ""
+    start = match.end()
+    next_match = re.search(r"^##\s+", text[start:], flags=re.MULTILINE)
+    end = start + next_match.start() if next_match else len(text)
+    return text[start:end].strip()
+
+
+def parse_contract_invariants(errors: list[str]) -> tuple[dict[str, set[str]], set[str]]:
+    active: dict[str, set[str]] = {}
+    retired: set[str] = set()
+    references = (
+        ROOT / "skills" / "deepdone-orchestrate" / "references" / "state-machine.md",
+        ROOT / "skills" / "deepdone-orchestrate" / "references" / "safety-and-modes.md",
+    )
+    for path in references:
+        text = read_text(path)
+        headings = list(re.finditer(r"^##\s+(Active|Retired) Invariants\s*$|^###\s+(DD-[A-Z]+-[0-9]{3}):\s+(.+?)\s*$", text, flags=re.MULTILINE))
+        state: str | None = None
+        for index, match in enumerate(headings):
+            if match.group(1):
+                state = match.group(1).lower()
+                continue
+            invariant_id = match.group(2)
+            if state not in {"active", "retired"}:
+                errors.append(f"{path.relative_to(ROOT)}: {invariant_id} is outside an invariant section")
+                continue
+            end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+            block = text[match.end() : end]
+            if invariant_id in active or invariant_id in retired:
+                errors.append(f"duplicate invariant ID: {invariant_id}")
+                continue
+            if not INVARIANT_ID_RE.fullmatch(invariant_id):
+                errors.append(f"invalid invariant ID: {invariant_id}")
+            if state == "retired":
+                retired.add(invariant_id)
+                continue
+            for field in ("Rule", "Applies to", "Evidence"):
+                if not re.search(rf"^-\s+{field}:\s+\S", block, flags=re.MULTILINE):
+                    errors.append(f"{invariant_id}: missing {field}")
+            applies_match = re.search(r"^-\s+Applies to:\s+(.+)$", block, flags=re.MULTILINE)
+            applies = set(re.findall(r"`(deepdone-[a-z0-9-]+)`", applies_match.group(1))) if applies_match else set()
+            if not applies:
+                errors.append(f"{invariant_id}: has no affected skills")
+            unknown = applies.difference(SKILLS)
+            if unknown:
+                errors.append(f"{invariant_id}: unknown affected skills: {sorted(unknown)}")
+            active[invariant_id] = applies
+    return active, retired
+
+
+def check_invariant_conformance(errors: list[str]) -> None:
+    active, retired = parse_contract_invariants(errors)
+    found = set(active).union(retired)
+    missing = REQUIRED_INVARIANT_IDS.difference(found)
+    if missing:
+        errors.append(f"missing required invariant IDs: {sorted(missing)}")
+    unexpected = found.difference(REQUIRED_INVARIANT_IDS)
+    if unexpected:
+        errors.append(f"unregistered invariant IDs: {sorted(unexpected)}")
+
+    skill_refs: dict[str, set[str]] = {}
+    for skill in SKILLS:
+        text = read_text(ROOT / "skills" / skill / "SKILL.md")
+        refs = set(re.findall(r"`(DD-[A-Z]+-[0-9]{3})`", markdown_section(text, "Conforms To")))
+        skill_refs[skill] = refs
+        unknown = refs.difference(active).difference(retired)
+        if unknown:
+            errors.append(f"{skill}: references unknown invariants: {sorted(unknown)}")
+        retired_refs = refs.intersection(retired)
+        if retired_refs:
+            errors.append(f"{skill}: references retired invariants: {sorted(retired_refs)}")
+
+    for invariant_id, affected_skills in active.items():
+        for skill in affected_skills:
+            if invariant_id not in skill_refs.get(skill, set()):
+                errors.append(f"{skill}: missing declared invariant {invariant_id}")
+        for skill, refs in skill_refs.items():
+            if invariant_id in refs and skill not in affected_skills:
+                errors.append(f"{skill}: references {invariant_id} but contract does not list it")
+
+
+def check_manifest_schema_versions(errors: list[str]) -> None:
+    versions: dict[str, int] = {}
+    for rel in MANIFEST_SCHEMA_SCRIPTS:
+        text = read_text(ROOT / rel)
+        match = re.search(r"^MANIFEST_SCHEMA_VERSION\s*=\s*([0-9]+)\s*$", text, flags=re.MULTILINE)
+        if not match:
+            errors.append(f"{rel}: missing MANIFEST_SCHEMA_VERSION")
+        else:
+            versions[rel] = int(match.group(1))
+    if versions and set(versions.values()) != {1}:
+        errors.append(f"reviewed change-set schema mismatch: {versions}")
+
+
 def check_logging_removed(errors: list[str]) -> None:
     removed_paths = (
         ROOT / "skills" / "deepdone-orchestrate" / "scripts" / "append_run_audit.py",
@@ -171,6 +292,11 @@ def check_examples(errors: list[str]) -> None:
     for required in ("## Summary", "## DeepDone", "## Verification", "## Open Loops"):
         if pr_body and required not in pr_body:
             errors.append(f"examples/pr-body.md: missing {required}")
+
+    commit_candidate = read_text(ROOT / "examples" / "commit-candidate.md")
+    for required in ("## Reviewed Files", "## Excluded Unreviewed Files", "## Stale Reviewed Files", "## Staged Unowned Files", "review-id:", "manifest:", "paths:"):
+        if commit_candidate and required not in commit_candidate:
+            errors.append(f"examples/commit-candidate.md: missing {required}")
 
     archived_ledger = read_text(ROOT / "examples" / "archived-epic-ledger.md")
     for required in ("## Review", "result: pass", "## Status", "archived", "merge/ref:", "post-merge verification:"):
@@ -225,6 +351,8 @@ def main() -> int:
     check_skill_metadata(errors)
     check_skill_references(errors)
     check_orchestrator_budget(errors)
+    check_invariant_conformance(errors)
+    check_manifest_schema_versions(errors)
     check_logging_removed(errors)
     check_examples(errors)
     check_helper_scripts(errors)
@@ -239,6 +367,7 @@ def main() -> int:
     print("DeepDone doctor: pass")
     print(f"- skills checked: {len(SKILLS)}")
     print(f"- helper scripts checked: {len(HELPER_SCRIPTS)}")
+    print(f"- invariants checked: {len(REQUIRED_INVARIANT_IDS)}")
     print(f"- examples checked: {len(EXAMPLES)}")
     print("- unit tests: pass")
     return 0

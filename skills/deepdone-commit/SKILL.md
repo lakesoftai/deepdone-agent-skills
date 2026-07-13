@@ -10,6 +10,13 @@ description: Prepare or create a safe focused git commit for completed DeepDone 
 
 Prepare or create a focused git commit for completed DeepDone work.
 
+## Conforms To
+
+- `DD-STATE-001`, `DD-MODE-002`
+- `DD-AUTH-001`, `DD-AUTH-002`
+- `DD-OWN-001`, `DD-REVIEW-001`
+- `DD-COMMIT-001`, `DD-COMMIT-002`
+
 This is a safety gate, not a formatting helper.
 
 Default behavior is commit candidate only when intent is unclear. Commit only when the current user request explicitly asks for commit, or supervisor context carries `commit: allowed` with source `mode` or `exact user request`.
@@ -66,6 +73,9 @@ Before actual commit, all must be true:
 - active ledger is current,
 - verification entries include `result: pass|fail|blocked`, and no failed or blocked check remains unaccepted,
 - latest review result is `pass`,
+- latest passing Review has `review-id`, `base-head`, `manifest`, and exact `paths`,
+- reviewed change-set manifest validates and matches current contents,
+- no staged path exists outside reviewed change set,
 - no unresolved Open Loop blocks this commit,
 - commit message accurately describes the diff,
 - no dangerous files are included.
@@ -94,30 +104,24 @@ Examples:
 If available, use:
 
 ```bash
-python3 scripts/commit_progress.py --candidate
+python3 <skill-dir>/scripts/commit_progress.py --candidate
 ```
 
 For an actual commit, use the harness when commit is authorized:
 
 ```bash
-python3 scripts/commit_progress.py --commit --yes --authorized-by <exact-user-request|mode>
+python3 <skill-dir>/scripts/commit_progress.py --commit --yes --authorized-by <exact-user-request|mode> --reviewed-change-set .deepdone/reviews/<review-id>.json
 ```
+
+Resolve `<skill-dir>` from this loaded skill's filesystem path. Do not expect the helper under the target repository's root `scripts/` directory.
 
 Do not run `git add .`.
 
 When the supervisor provides a ledger path, pass `--ledger <path>` to the harness. This is required when multiple completed single-epic ledgers exist.
 
-After roadmap advance with reviewed predecessor changes still dirty, use the previous reviewed ledger path returned by `$deepdone-advance`. The current active ledger belongs the next epic and must not supply commit gates for predecessor work.
+The harness stages only exact unchanged manifest paths, including reviewed untracked files. It reports and preserves unrelated unstaged or untracked work. Any unrelated staged path blocks actual commit. It must not create repo-local candidate files by default. Candidate output should go to stdout unless the user explicitly asks for a file.
 
-The harness stages exact files intentionally, including expected untracked files. It must not create repo-local candidate files by default. Candidate output should go to stdout unless the user explicitly asks for a file.
-
-If the bundled harness is not available, use normal git commands directly:
-
-1. inspect `git status --short --untracked-files=all`,
-2. reject dangerous or local-only paths,
-3. stage exact expected paths with `git add -- <path> ...`,
-4. commit with `git commit -F <message-file>` or `git commit -m`,
-5. report hash.
+If the bundled harness is unavailable, stop. Do not reproduce manifest validation or exact-set staging manually.
 
 If the environment refuses writes to `.git/index`, `.git/HEAD`, or refs, report that as an environment permission blocker. Do not fall back to writing git internals manually.
 
@@ -134,7 +138,7 @@ If the environment refuses writes to `.git/index`, `.git/HEAD`, or refs, report 
    - residual risk,
    - commit message.
 5. If user asked only for candidate, stop.
-6. If commit is authorized, stage exact files and commit.
+6. If commit is authorized, require explicit manifest path, validate it, stage exact reviewed files, verify cached path equality, and commit.
 7. Report commit hash if created.
 8. Never push.
 

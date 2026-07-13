@@ -6,6 +6,10 @@ description: Prepare a platform-neutral pull or merge request draft, optionally 
 
 # DeepDone PR
 
+## Conforms To
+
+- `DD-AUTH-001`, `DD-AUTH-002`
+
 ## Purpose
 
 Bridge completed local DeepDone work to a review request without assuming GitHub, GitLab, push permission, or merge authority.

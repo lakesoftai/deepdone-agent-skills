@@ -100,6 +100,9 @@ workflow stage.
 - archive only after explicit current-run request and clear merge/release reference
 - never use `git add .`
 - commit harness rejects likely secrets and local-only files
+- passing review records exact paths plus ignored deterministic evidence under `.deepdone/reviews/`
+- commit harness accepts only unchanged reviewed paths and preserves unrelated unstaged work
+- reviewed paths must be clean before roadmap advance
 
 ## License
 
@@ -125,4 +128,28 @@ Run:
 python3 scripts/doctor.py
 ```
 
-Doctor checks skill metadata, OpenAI manifests, helper scripts, examples, and unit tests.
+Doctor checks skill metadata, OpenAI manifests, invariant conformance, reviewed change-set schema compatibility, helper scripts, examples, logging removal, and unit tests.
+
+## Manual Cross-Agent Evaluation
+
+List or preflight without agent work:
+
+```bash
+python3 evals/run_cross_agent.py --list
+python3 evals/run_cross_agent.py --preflight
+```
+
+Run smoke manually with installed Codex and Claude Code credentials:
+
+```bash
+python3 evals/run_cross_agent.py --profile smoke --output-dir /tmp/deepdone-evals
+```
+
+Release evaluation requires explicit model names and runs every scenario three times in both harnesses:
+
+```bash
+python3 evals/run_cross_agent.py --profile release --codex-model <model> --claude-model <model> --output-dir /tmp/deepdone-evals-release
+```
+
+Live evaluation is never part of doctor or normal unit tests.
+Every live run starts with a mandatory project-local skill-discovery probe and skips behavioral scenarios for that agent if discovery fails.

@@ -6,6 +6,10 @@ description: Triage and fix accepted local code review findings from a DeepDone 
 
 # DeepDone Fixup
 
+## Conforms To
+
+- `DD-STATE-002`
+
 ## Purpose
 
 Fix review findings without turning review into a new unbounded implementation phase.

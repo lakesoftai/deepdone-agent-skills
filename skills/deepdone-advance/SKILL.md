@@ -10,6 +10,11 @@ description: Move a multi-epic initiative from the completed active epic to the 
 
 Advance a multi-epic initiative without creating planning sprawl.
 
+## Conforms To
+
+- `DD-STATE-001`, `DD-REVIEW-001`
+- `DD-ADVANCE-001`
+
 This skill is the only default mechanism that should:
 
 - rotate the active epic in a roadmap
@@ -27,6 +32,8 @@ Before advancing, confirm one of these is true:
 3. roadmap exists and current active epic ledger is clearly complete with latest review result `pass`, even if roadmap state is recoverably stale
 
 If the active epic is not truly complete, stop and explain why advancing is premature.
+
+When an active epic exists, run bundled `scripts/check_reviewed_change_set.py` with its ledger path. Stop when any reviewed path is dirty. A missing manifest is acceptable only when all recorded reviewed paths are clean, such as after a successful or manual commit.
 
 ## What To Read
 
@@ -119,7 +126,7 @@ Carry forward only what the next epic actually needs:
 
 Do not copy old verification logs or stale open loops that no longer matter.
 
-Commit is optional before advance. Expected reviewed changes may remain dirty. Stop for unrelated, unreviewed, or ambiguous dirty files.
+Do not advance across dirty reviewed work. Commit it or let the user explicitly abandon it outside DeepDone first. Never stash, reset, discard, or abandon it automatically. Stop for ambiguous dirty ownership.
 
 ## Plan Mode Policy
 
@@ -131,16 +138,17 @@ If no planning mode exists, perform the same compact checks in normal execution 
 
 1. Locate the roadmap.
 2. Verify the current active epic is complete with latest review result `pass`, or confirm there is no active epic yet.
-3. Mark the completed epic entry `[x]` if needed.
-4. Select the next queued epic whose dependencies are satisfied.
-5. Create exactly one new epic ledger for that epic.
-6. Update that epic queue entry from `[ ]` to `[-]`.
-7. Write the new ledger path into the chosen queue item.
-8. Update `Active Epic` to the new epic name, ledger path, and `state: active`.
-9. If no queued epics remain, set:
+3. Prove every path in latest reviewed change set is clean.
+4. Mark the completed epic entry `[x]` if needed.
+5. Select the next queued epic whose dependencies are satisfied.
+6. Create exactly one new epic ledger for that epic.
+7. Update that epic queue entry from `[ ]` to `[-]`.
+8. Write the new ledger path into the chosen queue item.
+9. Update `Active Epic` to the new epic name, ledger path, and `state: active`.
+10. If no queued epics remain, set:
    - `Active Epic` to `name: none`, `ledger: none`, `state: none`
    - roadmap `Status` to `complete`
-10. Return the new active epic and exact next action.
+11. Return the new active epic and exact next action.
 
 ## Guardrails
 
@@ -155,7 +163,7 @@ If no planning mode exists, perform the same compact checks in normal execution 
 Return:
 
 - exact roadmap path
-- previous active epic, exact ledger path, review result, completion status, and whether reviewed changes remain uncommitted
+- previous active epic, exact ledger path, review result, completion status, and reviewed-set cleanliness
 - new active epic, or roadmap-complete verdict
 - exact new ledger path if created
 - milestone list with acceptance checks for the new active epic

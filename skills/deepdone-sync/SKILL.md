@@ -10,6 +10,11 @@ description: Reconstruct active work from the epic ledger, and from the roadmap 
 
 Recover fast from interruption without guessing.
 
+## Conforms To
+
+- `DD-STATE-001`, `DD-REVIEW-001`
+- `DD-OWN-001`, `DD-ADVANCE-001`, `DD-DRIFT-001`
+
 This skill is for resuming:
 
 - a single epic, or
@@ -99,13 +104,13 @@ If no planning mode exists, write a compact reconciliation plan and stop before 
 8. Confirm whether `Next Action` still makes sense.
 9. If stale, rewrite `Next Action` to one concrete step.
 10. Keep `Status` accurate.
-11. Recommend `$deepdone-advance` only when epic is complete and latest review result is `pass`.
+11. Recommend `$deepdone-advance` only when epic is complete, latest review result is `pass`, and all recorded reviewed paths are clean.
 
 ## Reconciliation Rules
 
 - reconcile only stale status, stale Next Action, missing Review, or verification recency when one work unit is unambiguous
 - block on multiple plausible active ledgers, current changes belonging to another epic, unrelated dirty files, or judgment-heavy mismatch
-- if an epic ledger says `complete` and roadmap `Active Epic.state` is `complete-pending-advance`, next action is usually `Run DeepDone Advance`
+- if an epic ledger says `complete` and roadmap `Active Epic.state` is `complete-pending-advance`, next action is commit or explicit abandonment while reviewed paths remain dirty, otherwise `Run DeepDone Advance`
 - if an epic says complete without latest review result `pass`, reopen it as active and route to review
 - if no meaningful changes exist beyond the ledger, preserve finished milestones and do not reopen them casually
 - if a milestone was partially implemented but not verified, keep it in progress or reopen it explicitly

@@ -6,6 +6,10 @@ description: Archive a completed DeepDone epic after an explicit current-run arc
 
 # DeepDone Archive
 
+## Conforms To
+
+- `DD-AUTH-001`, `DD-AUTH-002`
+
 ## Purpose
 
 Close the post-commit loop after work has merged or otherwise been released.

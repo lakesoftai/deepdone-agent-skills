@@ -10,6 +10,12 @@ description: Perform skeptical local code review focused on correctness, regress
 
 Review local diff like hostile teammate who wants truth.
 
+## Conforms To
+
+- `DD-STATE-001`, `DD-STATE-002`
+- `DD-OWN-001`, `DD-DRIFT-001`
+- `DD-REVIEW-001`, `DD-COMMIT-001`
+
 ## Primary Review Axes
 
 - correctness
@@ -50,7 +56,7 @@ Inspect the complete local change set before issuing a result:
 - contents of relevant untracked files
 - active milestone, constraints, verification evidence, and AGENTS instructions
 
-Review only active-scope changes. Stop if unrelated dirty files make ownership unclear. If no local changes exist but the milestone claims implementation in commits, require an explicit review base instead of guessing.
+Review only active-scope changes. Clearly unrelated files may remain dirty when active-scope ownership is provable; inspect enough to confirm exclusion, then leave them untouched. Stop if ownership is ambiguous. If no local changes exist but the milestone claims implementation in commits, require an explicit review base instead of guessing.
 
 ## Ledger Writeback
 
@@ -69,10 +75,31 @@ Set review `result` as:
 
 On `pass`:
 
+- create a stable `review-id` from UTC timestamp plus eight random hexadecimal characters
+- record current full `base-head`
+- record manifest path `.deepdone/reviews/<review-id>.json`
+- record every reviewed repository-relative path under `paths`, including changed ledger and roadmap files
 - mark ledger `Status` as `complete`
 - if roadmap exists, change current queue item from `[-]` to `[x]`
 - set roadmap `Active Epic.state` to `complete-pending-advance`
-- set `Next Action` from supervisor mode: for `until-epic`, advance only when a roadmap has queued or finalization work, otherwise await the next explicit workflow request; use commit for commit-authorized modes and candidate for candidate mode
+- set `Next Action` from supervisor mode: for `until-epic`, await commit or explicit abandonment before advance when a roadmap has queued or finalization work, otherwise await the next explicit workflow request; use commit for commit-authorized modes and candidate for candidate mode
+- after all ledger and roadmap writes, run bundled `scripts/capture_reviewed_change_set.py` with the exact ledger path
+- treat pass as actionable only when capture succeeds; on capture failure append a newer `pending` or `blocked` Review entry with the exact failure
+
+Use this passing entry shape:
+
+```md
+- reviewed-at: <timestamp>
+  result: pass
+  review-id: <stable-id>
+  base-head: <full-sha>
+  manifest: .deepdone/reviews/<review-id>.json
+  paths:
+    - <repo-relative-path>
+  notes: <summary>
+```
+
+Markdown path list is authoritative for agent behavior. JSON manifest is ignored local gate evidence, never run logging.
 
 On `fail`, keep epic and roadmap active and set `Next Action` to `$deepdone-fixup`.
 
@@ -123,7 +150,8 @@ On `blocked`, mark epic and roadmap blocked and state exact unblock condition.
 5. Check whether tests prove intended behavior.
 6. Classify each finding by severity.
 7. Append structured Review entry and update lifecycle state.
-8. Report findings first.
+8. On pass, capture exact reviewed change set with bundled helper.
+9. Report findings first.
 
 ## Output
 
