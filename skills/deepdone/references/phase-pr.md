@@ -8,7 +8,7 @@
 
 Bridge completed local DeepDone work to a review request without assuming GitHub, GitLab, push permission, or merge authority.
 
-This phase prepares PR/MR material by default.
+This internal phase prepares PR/MR material by default.
 It creates a PR only when the current user explicitly asks, or supervisor context carries `pr-create: allowed` with source `exact user request`. State labels never authorize creation.
 
 Never push by default.

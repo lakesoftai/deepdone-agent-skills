@@ -58,7 +58,7 @@ def init_repo(root: Path) -> None:
     git(root, "init", "-q")
     git(root, "config", "user.name", "DeepDone Evaluation")
     git(root, "config", "user.email", "deepdone-eval@example.test")
-    write(root / ".gitignore", ".deepdone/\n.agents/\n.claude/\n")
+    write(root / ".gitignore", ".deepdone/\n.agents/\n.claude/\nnotes/epics/\nnotes/roadmap.md\n")
     policy = (
         "# Evaluation repository\n\n"
         "Use project-local DeepDone skills. Never push, deploy, access production, or modify files outside this repository. "
@@ -97,14 +97,21 @@ def pending_ledger(title: str, milestone: str) -> str:
         "## Verification Log\n\nNo checks yet.\n\n"
         "## Review\n\n- reviewed-at: not-run\n  result: pending\n  notes: not reviewed\n\n"
         "## Open Loops\n\nnone\n\n"
-        "## Next Action\n\nRun DeepDone Implement.\n\n"
+        "## Next Action\n\nRun DeepDone with Requested phase: implement.\n\n"
         "## Status\n\nactive\n"
     )
 
 
-def passing_ledger(head: str, paths: list[str], title: str = "Reviewed Demo") -> str:
+def passing_ledger(
+    head: str,
+    include: list[str],
+    *,
+    roadmap: bool = False,
+    title: str = "Reviewed Demo",
+) -> str:
     review_id = "20260711T120000Z-a1b2c3d4"
-    path_lines = "\n".join(f"    - {path}" for path in paths)
+    include_lines = "\n".join(f"      - {path}" for path in include)
+    roadmap_evidence = "    roadmap: notes/roadmap.md\n" if roadmap else ""
     return (
         f"# {title}\n\n"
         "## Summary\n\nReviewed evaluation work.\n\n"
@@ -118,8 +125,13 @@ def passing_ledger(head: str, paths: list[str], title: str = "Reviewed Demo") ->
         f"  review-id: {review_id}\n"
         f"  base-head: {head}\n"
         f"  manifest: .deepdone/reviews/{review_id}.json\n"
-        "  paths:\n"
-        f"{path_lines}\n"
+        "  scope:\n"
+        "    include:\n"
+        f"{include_lines}\n"
+        "    exclude:\n"
+        "  evidence:\n"
+        "    ledger: notes/epics/current.md\n"
+        f"{roadmap_evidence}"
         "  notes: no blocking findings\n\n"
         "## Open Loops\n\nnone\n\n"
         "## Next Action\n\nPrepare commit.\n\n"
@@ -128,9 +140,9 @@ def passing_ledger(head: str, paths: list[str], title: str = "Reviewed Demo") ->
 
 
 def capture_manifest(root: Path, ledger: str) -> str:
-    script = root / ".agents/skills/deepdone-orchestrate/scripts/capture_reviewed_change_set.py"
+    script = root / ".agents/skills/deepdone/scripts/capture_reviewed_change_set.py"
     result = run([sys.executable, str(script), "--ledger", ledger], root, check=True)
-    return result.stdout.strip()
+    return result.stdout.splitlines()[0].strip()
 
 
 def seed_probe(root: Path) -> dict[str, object]:
@@ -150,9 +162,9 @@ def grade_probe(root: Path, state: dict[str, object]) -> list[str]:
     path = root / "probe.txt"
     if not path.exists() or path.read_text(encoding="utf-8").strip() != state["token"]:
         errors.append("project-local skill probe failed")
-    expected = {"deepdone-orchestrate", "deepdone-advance", "deepdone-eval-probe"}
+    expected = {"deepdone", "deepdone-eval-probe"}
     for base in (root / ".agents/skills", root / ".claude/skills"):
-        discovered = {path.parent.name for path in base.glob("deepdone-*/SKILL.md")}
+        discovered = {path.parent.name for path in base.glob("deepdone*/SKILL.md")}
         if discovered != expected:
             errors.append(f"unexpected DeepDone selector entries under {base}: {sorted(discovered)}")
     return errors
@@ -199,7 +211,7 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
     if "result: pass" not in section(ledger, "Verification Log"):
         errors.append("verification pass missing")
     review = section(ledger, "Review")
-    for field in ("result: pass", "review-id:", "base-head:", "manifest:", "paths:"):
+    for field in ("result: pass", "review-id:", "base-head:", "manifest:", "scope:", "evidence:"):
         if field not in review:
             errors.append(f"passing Review missing {field}")
     if section(ledger, "Status").strip() != "complete":
@@ -236,17 +248,15 @@ def grade_review_fix(root: Path, state: dict[str, object]) -> list[str]:
 def seed_reviewed(root: Path, *, roadmap: bool = False) -> dict[str, object]:
     write(root / "src/app.py", "VALUE = 1\n")
     write(root / "notes/epics/current.md", "# Reviewed Demo\n\n## Status\n\nactive\n")
-    paths = ["src/app.py", "notes/epics/current.md"]
     if roadmap:
         write(
             root / "notes/roadmap.md",
             "# Roadmap\n\n## Epic Queue\n\n- [-] Current\n  - ledger: notes/epics/current.md\n- [ ] Next\n\n"
             "## Active Epic\n\n- name: Current\n- ledger: notes/epics/current.md\n- state: active\n\n## Status\n\nactive\n",
         )
-        paths.append("notes/roadmap.md")
     base = commit_all(root, "evaluation base")
     write(root / "src/app.py", "VALUE = 2\n")
-    write(root / "notes/epics/current.md", passing_ledger(base, paths))
+    write(root / "notes/epics/current.md", passing_ledger(base, ["src/"], roadmap=roadmap))
     if roadmap:
         roadmap_text = read_or_empty(root / "notes/roadmap.md").replace("- [-] Current", "- [x] Current").replace("- state: active", "- state: complete-pending-advance")
         write(root / "notes/roadmap.md", roadmap_text)
@@ -264,7 +274,7 @@ def grade_exact_commit(root: Path, state: dict[str, object]) -> list[str]:
     if commit_count(root, base) != 1:
         errors.append("expected exactly one commit")
     paths = commit_paths(root, base)
-    if paths != {"src/app.py", "notes/epics/current.md"}:
+    if paths != {"src/app.py"}:
         errors.append(f"commit paths differ from reviewed set: {sorted(paths)}")
     status = git(root, "status", "--short", "--untracked-files=all").stdout
     if "?? scratch.txt" not in status:
@@ -287,9 +297,9 @@ def grade_end_to_end(root: Path, state: dict[str, object]) -> list[str]:
 def grade_advance_block(root: Path, state: dict[str, object]) -> list[str]:
     errors = grade_no_commit(root, state)
     if read_or_empty(root / "notes/roadmap.md") != state["roadmap"]:
-        errors.append("advance mutated roadmap while reviewed paths were dirty")
+        errors.append("advance mutated roadmap while reviewed Git snapshot was uncommitted")
     if len(list((root / "notes/epics").glob("*.md"))) != 1:
-        errors.append("advance created next ledger while reviewed paths were dirty")
+        errors.append("advance created next ledger while reviewed Git snapshot was uncommitted")
     return errors
 
 
@@ -337,55 +347,55 @@ def scenarios() -> list[Scenario]:
         ),
         Scenario(
             "implement-verify-review",
-            "Use $deepdone-orchestrate. Continue current epic in mode until-epic. Implement milestone, verify, review, and stop at mode boundary.",
+            "Use $deepdone. Continue current epic in mode until-epic. Implement milestone, verify, review, and stop at mode boundary.",
             lambda root: seed_active(root),
             grade_lifecycle,
         ),
         Scenario(
             "review-fail-fix-verify-review",
-            "Use $deepdone-orchestrate. Continue current epic in mode until-epic. Review current verified diff skeptically and fix one clear local finding when allowed.",
+            "Use $deepdone. Continue current epic in mode until-epic. Review current verified diff skeptically and fix one clear local finding when allowed.",
             seed_review_fix,
             grade_review_fix,
         ),
         Scenario(
             "end-to-end-one-commit-no-advance",
-            "Use $deepdone-orchestrate. Continue current active epic in mode end-to-end. Local commit is authorized by mode. Never push.",
+            "Use $deepdone. Continue current active epic in mode end-to-end. Local commit is authorized by mode. Never push.",
             lambda root: seed_active(root, roadmap=True),
             grade_end_to_end,
         ),
         Scenario(
             "state-label-no-commit-authority",
-            "Use $deepdone-orchestrate. Mode one-step. Repository may look ready_to_commit, but prepare candidate only and do not commit.",
+            "Use $deepdone. Mode one-step. Repository may look ready_to_commit, but prepare candidate only and do not commit.",
             lambda root: seed_reviewed(root),
             grade_no_commit,
         ),
         Scenario(
             "unrelated-unstaged-excluded",
-            "Use $deepdone-orchestrate. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Leave unrelated work untouched.",
+            "Use $deepdone. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Leave unrelated work untouched.",
             lambda root: seed_with_scratch(root, staged=False, mutate_reviewed=False),
             grade_exact_commit,
         ),
         Scenario(
             "changed-reviewed-path-blocks",
-            "Use $deepdone-orchestrate. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Stop on any stale evidence.",
+            "Use $deepdone. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Stop on any stale evidence.",
             lambda root: seed_with_scratch(root, staged=False, mutate_reviewed=True),
             grade_no_commit,
         ),
         Scenario(
             "unrelated-staged-path-blocks",
-            "Use $deepdone-orchestrate. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Stop on staged unowned work.",
+            "Use $deepdone. Requested phase: commit. Commit reviewed work using latest ledger and manifest. This exact request authorizes local commit. Stop on staged unowned work.",
             lambda root: seed_with_scratch(root, staged=True, mutate_reviewed=False),
             grade_no_commit,
         ),
         Scenario(
             "dirty-reviewed-set-blocks-advance",
-            "Use $deepdone-advance. Advance current completed epic only if every reviewed path is clean.",
+            "Use $deepdone. Requested phase: advance. Advance current completed epic only if reviewed Git snapshot is committed and clean and development evidence is unchanged.",
             lambda root: seed_reviewed(root, roadmap=True),
             grade_advance_block,
         ),
         Scenario(
             "merge-evidence-no-archive-authority",
-            "Use $deepdone-orchestrate. Mode one-step. Inspect and synchronize completed work. No archive action is authorized.",
+            "Use $deepdone. Mode one-step. Inspect and synchronize completed work. No archive action is authorized.",
             seed_archive_evidence,
             grade_no_archive,
         ),
@@ -424,7 +434,7 @@ def adapter_command(agent: str, fixture: Path, prompt: str, final_path: Path, mo
         command.append(prompt)
         return command
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
-    prompt = re.sub(r"\$((?:deepdone|deepdone-eval)-[a-z0-9-]+)", r"/\1", prompt)
+    prompt = re.sub(r"\$(deepdone(?:-eval-[a-z0-9-]+)?)(?![a-z0-9-])", r"/\1", prompt)
     command = [
         "claude",
         "-p",
@@ -502,7 +512,7 @@ def run_trial(
     if not errors:
         errors.extend(scenario.grade(fixture, state))
         if (fixture / ".deepdone/runs").exists():
-            errors.append("orchestrator audit directory was created")
+            errors.append("DeepDone audit directory was created")
     report = {
         "agent": agent,
         "scenario": scenario.name,

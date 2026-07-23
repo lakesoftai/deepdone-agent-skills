@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Prepare or create a DeepDone commit from one reviewed change set."""
+"""Prepare or create a DeepDone Commit phase result from one reviewed change set."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import logging
 import os
 import re
-import stat
 import subprocess
 import sys
 import tempfile
@@ -17,7 +15,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-MANIFEST_SCHEMA_VERSION = 1
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import capture_reviewed_change_set as review_snapshot  # noqa: E402
+
+
+MANIFEST_SCHEMA_VERSION = 2
 
 DANGEROUS_PATTERNS = [
     re.compile(r"(^|/)\.env($|[./])", re.IGNORECASE),
@@ -56,10 +61,6 @@ class GitFile:
     status: str
     path: str
     old_path: str | None = None
-
-
-def literal_pathspec(path: str) -> str:
-    return f":(literal){path}"
 
 
 def run(cmd: list[str], cwd: Path, check: bool = False) -> tuple[int, str, str]:
@@ -300,29 +301,7 @@ def review_lines(ledger_text: str) -> list[str]:
 
 
 def latest_review_entry(ledger_text: str) -> dict[str, object]:
-    lines = section(ledger_text, "Review").splitlines()
-    starts = [index for index, line in enumerate(lines) if re.match(r"^\s*-\s*reviewed-at:\s*", line)]
-    if not starts:
-        return {}
-    entry: dict[str, object] = {}
-    paths: list[str] = []
-    reading_paths = False
-    for raw in lines[starts[-1] :]:
-        stripped = raw.strip()
-        if re.match(r"^-\s*reviewed-at:\s*", stripped):
-            entry["reviewed-at"] = stripped.split(":", 1)[1].strip()
-            reading_paths = False
-        elif stripped == "paths:":
-            reading_paths = True
-        elif reading_paths and re.match(r"^-\s+", stripped):
-            paths.append(re.sub(r"^-\s+", "", stripped).strip().strip("`"))
-        else:
-            field = re.match(r"^([a-z][a-z0-9-]*):\s*(.*)$", stripped)
-            if field:
-                reading_paths = False
-                entry[field.group(1)] = field.group(2).strip().strip("`")
-    entry["paths"] = paths
-    return entry
+    return review_snapshot.latest_review_entry(ledger_text)
 
 
 def blocking_open_loops(open_loops: list[str]) -> list[str]:
@@ -455,52 +434,6 @@ def build_message(epic: str | None, milestone: str | None, verification: list[st
     return "\n".join(lines).rstrip() + "\n"
 
 
-def gitlink_evidence(root: Path, path: str) -> tuple[str, str] | None:
-    code, out, _ = run(["git", "ls-files", "-s", "--", literal_pathspec(path)], root)
-    if code != 0 or not out:
-        return None
-    first = out.splitlines()[0].split()
-    if len(first) >= 2 and first[0] == "160000":
-        return "gitlink", first[1]
-    return None
-
-
-def path_evidence(root: Path, item: GitFile) -> dict[str, object]:
-    absolute = ensure_repo_path(root, item.path)
-    if absolute.is_symlink():
-        kind = "symlink"
-        mode = "symlink"
-        digest = hashlib.sha256(b"symlink\0" + os.fsencode(os.readlink(absolute))).hexdigest()
-    elif absolute.is_file():
-        kind = "file"
-        mode = format(stat.S_IMODE(absolute.stat().st_mode), "04o")
-        hasher = hashlib.sha256()
-        with absolute.open("rb") as handle:
-            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                hasher.update(chunk)
-        digest = hasher.hexdigest()
-    elif absolute.is_dir() and (gitlink := gitlink_evidence(root, item.path)):
-        kind, digest = gitlink
-        mode = "160000"
-    elif not absolute.exists():
-        kind = "deleted"
-        mode = None
-        digest = None
-    else:
-        raise ValueError(f"Unsupported reviewed path type: {item.path}")
-    status_text = item.status if len(item.status) == 2 else item.status.ljust(2)
-    return {
-        "path": item.path,
-        "old_path": item.old_path,
-        "status": status_text,
-        "index_status": status_text[0],
-        "worktree_status": status_text[1],
-        "kind": kind,
-        "mode": mode,
-        "sha256": digest,
-    }
-
-
 def load_manifest(root: Path, manifest_value: str) -> tuple[str, Path, dict[str, object]]:
     manifest_rel = normalize_repo_path(root, manifest_value)
     manifest_path = ensure_repo_path(root, manifest_rel)
@@ -515,21 +448,50 @@ def load_manifest(root: Path, manifest_value: str) -> tuple[str, Path, dict[str,
     return manifest_rel, manifest_path, data
 
 
-def effective_paths(records: list[dict[str, object]]) -> set[str]:
-    paths: set[str] = set()
-    for record in records:
-        path = str(record.get("path", ""))
-        if path:
-            paths.add(path)
-        old_path = record.get("old_path")
-        status_text = str(record.get("status", ""))
-        if old_path and "R" in status_text:
-            paths.add(str(old_path))
+def logical_paths(item: GitFile) -> set[str]:
+    paths = {item.path}
+    if item.old_path:
+        paths.add(item.old_path)
     return paths
 
 
-def current_record_map(files: list[GitFile]) -> dict[str, GitFile]:
-    return {item.path: item for item in files}
+def tree_diff_paths(root: Path, left: str, right: str) -> set[str]:
+    return diff_path_set(root, ["git", "diff", "--name-only", "-z", "--no-renames", left, right])
+
+
+def validate_manifest_evidence(root: Path, manifest: dict[str, object]) -> list[str]:
+    errors: list[str] = []
+    raw_evidence = manifest.get("evidence")
+    if not isinstance(raw_evidence, list) or not raw_evidence:
+        return ["reviewed change set has no development evidence"]
+    roles: set[str] = set()
+    for raw in raw_evidence:
+        if not isinstance(raw, dict):
+            errors.append("reviewed change set has malformed development evidence")
+            continue
+        role = str(raw.get("role", ""))
+        if role not in review_snapshot.ALLOWED_EVIDENCE_ROLES:
+            errors.append(f"reviewed change set has unsupported evidence role: {role}")
+            continue
+        try:
+            path = normalize_repo_path(root, str(raw.get("path", "")))
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if role in roles:
+            errors.append(f"reviewed change set repeats evidence role: {role}")
+            continue
+        roles.add(role)
+        try:
+            current = review_snapshot.filesystem_evidence(root, role, path)
+        except ValueError:
+            errors.append(f"development evidence changed after review: {path}")
+            continue
+        if any(current.get(key) != raw.get(key) for key in ("role", "path", "kind", "mode", "sha256")):
+            errors.append(f"development evidence changed after review: {path}")
+    if "ledger" not in roles:
+        errors.append("reviewed change set has no ledger evidence")
+    return errors
 
 
 def validate_reviewed_change_set(
@@ -541,15 +503,21 @@ def validate_reviewed_change_set(
 ) -> tuple[list[GitFile], list[GitFile], list[str], list[str], list[str], str | None, Path | None, set[str]]:
     errors: list[str] = []
     stale: list[str] = []
-    staged_unowned: list[str] = []
     entry = latest_review_entry(ledger_text) if ledger_text else {}
     entry_manifest = str(entry.get("manifest", ""))
     chosen_manifest = manifest_value or entry_manifest or None
     if entry.get("result") != "pass":
         errors.append("latest Review result is not pass")
-    for field in ("review-id", "base-head", "manifest", "paths"):
+    for field in ("review-id", "base-head", "manifest", "evidence"):
         if not entry.get(field):
             errors.append(f"latest passing Review lacks {field}")
+    entry_scope = entry.get("scope")
+    if (
+        not isinstance(entry_scope, dict)
+        or not isinstance(entry_scope.get("include"), list)
+        or not entry_scope.get("include")
+    ):
+        errors.append("latest passing Review lacks scope")
     if not chosen_manifest:
         errors.append("latest passing review has no reviewed change-set manifest")
         excluded = [item for item in all_files if not is_local_only(item.path)]
@@ -581,73 +549,101 @@ def validate_reviewed_change_set(
         errors.append("reviewed change-set review ID does not match latest Review entry")
     if manifest.get("base_head") != entry.get("base-head"):
         errors.append("reviewed change-set base HEAD does not match latest Review entry")
+    manifest_scope = manifest.get("scope")
+    if isinstance(entry_scope, dict) and isinstance(manifest_scope, dict):
+        try:
+            normalized_entry_scope = {
+                "include": [
+                    review_snapshot.normalize_scope_root(root, str(value))
+                    for value in entry_scope.get("include", [])
+                ],
+                "exclude": [
+                    review_snapshot.normalize_scope_root(root, str(value))
+                    for value in entry_scope.get("exclude", [])
+                ],
+            }
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            if manifest_scope != normalized_entry_scope:
+                errors.append("reviewed change-set scope does not match latest Review entry")
+    else:
+        errors.append("reviewed change-set scope is malformed")
+
+    entry_evidence = entry.get("evidence")
+    raw_manifest_evidence = manifest.get("evidence")
+    if isinstance(entry_evidence, dict) and isinstance(raw_manifest_evidence, list):
+        try:
+            expected_evidence = {
+                role: normalize_repo_path(root, str(path))
+                for role, path in entry_evidence.items()
+            }
+        except ValueError as exc:
+            errors.append(str(exc))
+            expected_evidence = {}
+        actual_evidence = {
+            str(item.get("role", "")): str(item.get("path", ""))
+            for item in raw_manifest_evidence
+            if isinstance(item, dict)
+        }
+        if expected_evidence != actual_evidence:
+            errors.append("reviewed change-set evidence does not match latest Review entry")
+    else:
+        errors.append("reviewed change-set evidence is malformed")
     code, current_head, _ = run(["git", "rev-parse", "HEAD"], root)
     if code != 0 or manifest.get("base_head") != current_head:
         errors.append("repository HEAD changed after review")
 
-    raw_records = manifest.get("paths")
-    records = raw_records if isinstance(raw_records, list) else []
-    if not records or not all(isinstance(record, dict) for record in records):
-        errors.append("reviewed change-set has no valid path records")
-        records = []
+    review_id = str(manifest.get("review_id", ""))
+    base_head = str(manifest.get("base_head", ""))
+    review_ref = str(manifest.get("review_ref", ""))
+    review_commit = str(manifest.get("review_commit", ""))
+    review_tree = str(manifest.get("review_tree", ""))
+    expected_ref = f"{review_snapshot.REVIEW_REF_PREFIX}{review_id}"
+    if review_ref != expected_ref:
+        errors.append("reviewed change set has invalid private review ref")
+    if review_snapshot.ref_oid(root, review_ref) != review_commit:
+        errors.append("private review ref is missing or changed")
+    commit_tree_code, commit_tree, _ = run(["git", "rev-parse", f"{review_commit}^{{tree}}"], root)
+    if commit_tree_code != 0 or commit_tree != review_tree:
+        errors.append("review commit tree does not match manifest")
+    parent_code, parent, _ = run(["git", "rev-parse", f"{review_commit}^"], root)
+    if parent_code != 0 or parent != base_head:
+        errors.append("review commit parent does not match base HEAD")
 
-    primary_paths: list[str] = []
-    normalized_records: list[dict[str, object]] = []
-    for raw_record in records:
-        record = dict(raw_record)
-        try:
-            record["path"] = normalize_repo_path(root, str(record.get("path", "")))
-            if record.get("old_path"):
-                record["old_path"] = normalize_repo_path(root, str(record["old_path"]))
-        except ValueError as exc:
-            errors.append(str(exc))
-            continue
-        primary_paths.append(str(record["path"]))
-        normalized_records.append(record)
-    if len(primary_paths) != len(set(primary_paths)):
-        errors.append("reviewed change-set contains duplicate paths")
-
-    raw_entry_paths = entry.get("paths", [])
     try:
-        entry_paths = [normalize_repo_path(root, str(path)) for path in raw_entry_paths] if isinstance(raw_entry_paths, list) else []
+        owned = review_snapshot.changed_paths(root, base_head, review_commit)
     except ValueError as exc:
         errors.append(str(exc))
-        entry_paths = []
-    if set(entry_paths) != set(primary_paths):
-        errors.append("manifest paths do not match latest Review path list")
+        owned = set()
+    if not owned:
+        errors.append("reviewed change set has no Git paths")
+    if manifest.get("commit_path_count") != len(owned):
+        errors.append("reviewed change-set path count does not match Git snapshot")
 
-    by_path = current_record_map(all_files)
-    reviewed: list[GitFile] = []
-    compared_keys = ("path", "old_path", "status", "index_status", "worktree_status", "kind", "mode", "sha256")
-    for expected in normalized_records:
-        path = str(expected["path"])
-        current = by_path.get(path)
-        if current is None:
-            stale.append(path)
-            continue
-        reviewed.append(current)
+    errors.extend(validate_manifest_evidence(root, manifest))
+    if owned and base_head and review_tree:
         try:
-            actual = path_evidence(root, current)
-        except ValueError:
-            stale.append(path)
-            continue
-        if any(actual.get(key) != expected.get(key) for key in compared_keys):
-            stale.append(path)
+            current_tree = review_snapshot.build_tree_from_worktree(root, base_head, owned)
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            if current_tree != review_tree:
+                stale = sorted(tree_diff_paths(root, review_tree, current_tree))
+                errors.append("reviewed Git snapshot changed after review")
 
-    owned = effective_paths(normalized_records)
-    excluded: list[GitFile] = []
-    for item in all_files:
-        item_paths = {item.path}
-        if item.old_path and "R" in item.status:
-            item_paths.add(item.old_path)
-        if item_paths.isdisjoint(owned) and not is_local_only(item.path):
-            excluded.append(item)
-            status_text = item.status if len(item.status) == 2 else item.status.ljust(2)
-            if status_text[0] not in {" ", "?"}:
-                staged_unowned.append(item.path)
-
-    if stale:
-        errors.append("reviewed paths changed after review")
+    reviewed = [item for item in all_files if not logical_paths(item).isdisjoint(owned)]
+    excluded = [
+        item
+        for item in all_files
+        if logical_paths(item).isdisjoint(owned) and not is_local_only(item.path)
+    ]
+    try:
+        staged_paths = diff_path_set(root, ["git", "diff", "--cached", "--name-only", "-z", "--no-renames"])
+    except RuntimeError as exc:
+        errors.append(str(exc))
+        staged_paths = set()
+    staged_unowned = sorted(staged_paths.difference(owned))
     if staged_unowned:
         errors.append("staged paths exist outside reviewed change set")
     dangerous = sorted(path for path in owned if is_dangerous(path))
@@ -667,12 +663,24 @@ def render_candidate(candidate: dict[str, object], message: str) -> str:
         return "\n".join(render_file(GitFile(**value)) for value in values) if values else "- none"
 
     gate_errors = candidate.get("commit_gate_errors", [])
+    scope = candidate.get("reviewed_scope", {})
+    include = scope.get("include", []) if isinstance(scope, dict) else []
+    exclude = scope.get("exclude", []) if isinstance(scope, dict) else []
+    scope_lines = [f"- include: `{value}`" for value in include]
+    scope_lines.extend(f"- exclude: `{value}`" for value in exclude)
     return (
         "# DeepDone Commit Candidate\n\n"
         "## Message\n\n```text\n" + message + "```\n\n"
-        "## Reviewed Files\n\n" + files("reviewed_files") + "\n\n"
+        "## Reviewed Git Snapshot\n\n"
+        f"- ref: `{candidate.get('review_ref')}`\n"
+        f"- tree: `{candidate.get('review_tree')}`\n"
+        f"- changed paths: {candidate.get('reviewed_file_count', 0)}\n"
+        + ("\n".join(scope_lines) if scope_lines else "- scope: unavailable")
+        + "\n\n## Reviewed Status Sample\n\n"
+        + files("reviewed_files")
+        + "\n\n"
         "## Excluded Unreviewed Files\n\n" + files("excluded_unreviewed_files") + "\n\n"
-        "## Stale Reviewed Files\n\n"
+        "## Stale Reviewed Path Sample\n\n"
         + ("\n".join(f"- `{path}`" for path in candidate.get("stale_reviewed_files", [])) or "- none")
         + "\n\n## Staged Unowned Files\n\n"
         + ("\n".join(f"- `{path}`" for path in candidate.get("staged_unowned_files", [])) or "- none")
@@ -703,62 +711,12 @@ def diff_path_set(root: Path, args: list[str]) -> set[str]:
     return {os.fsdecode(path) for path in out.split(b"\0") if path}
 
 
-def commit_tree_evidence(root: Path, path: str) -> dict[str, object]:
-    code, tree_out, tree_err = run_bytes(["git", "ls-tree", "-z", "HEAD", "--", literal_pathspec(path)], root)
-    if code != 0:
-        raise RuntimeError(tree_err.decode(errors="replace").strip())
-    if not tree_out:
-        return {"kind": "deleted", "mode": None, "sha256": None}
-    record = tree_out.split(b"\0", 1)[0]
-    metadata, _, _ = record.partition(b"\t")
-    parts = metadata.decode("ascii", errors="strict").split()
-    if len(parts) != 3:
-        raise RuntimeError(f"Malformed tree evidence for {path}")
-    git_mode, object_type, object_id = parts
-    if git_mode == "160000":
-        return {"kind": "gitlink", "mode": "160000", "sha256": object_id}
-    code, content, content_err = run_bytes(["git", "show", f"HEAD:{path}"], root)
-    if code != 0:
-        raise RuntimeError(content_err.decode(errors="replace").strip())
-    if git_mode == "120000":
-        return {
-            "kind": "symlink",
-            "mode": "symlink",
-            "sha256": hashlib.sha256(b"symlink\0" + content).hexdigest(),
-        }
-    if object_type != "blob" or git_mode not in {"100644", "100755"}:
-        raise RuntimeError(f"Unsupported committed path type for {path}: {git_mode} {object_type}")
-    return {
-        "kind": "file",
-        "mode": "0" + git_mode[-3:],
-        "sha256": hashlib.sha256(content).hexdigest(),
-    }
-
-
-def commit_manifest_errors(root: Path, manifest_path: Path) -> list[str]:
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    raw_records = manifest.get("paths", [])
-    records = raw_records if isinstance(raw_records, list) else []
-    errors: list[str] = []
-    for expected in records:
-        if not isinstance(expected, dict):
-            errors.append("manifest contains malformed path record")
-            continue
-        path = normalize_repo_path(root, str(expected.get("path", "")))
-        actual = commit_tree_evidence(root, path)
-        for key in ("kind", "mode", "sha256"):
-            if actual.get(key) != expected.get(key):
-                errors.append(f"committed evidence differs for {path}: {key}")
-        old_path = expected.get("old_path")
-        if old_path and "R" in str(expected.get("status", "")):
-            old_rel = normalize_repo_path(root, str(old_path))
-            if commit_tree_evidence(root, old_rel)["kind"] != "deleted":
-                errors.append(f"rename source remains in commit tree: {old_rel}")
-    return errors
-
-
 def serialize_files(files: list[GitFile]) -> list[dict[str, object]]:
     return [{"status": item.status, "path": item.path, "old_path": item.old_path} for item in files]
+
+
+def bounded(values: list, limit: int = 20) -> list:
+    return values[:limit]
 
 
 def main() -> int:
@@ -802,6 +760,14 @@ def main() -> int:
         if args.message_file
         else build_message(epic, milestone, verification, review, reviewed)
     )
+    manifest_data: dict[str, object] = {}
+    if manifest_path and manifest_path.exists():
+        try:
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            loaded = {}
+        if isinstance(loaded, dict):
+            manifest_data = loaded
 
     candidate: dict[str, object] = {
         "epic": epic,
@@ -809,11 +775,23 @@ def main() -> int:
         "active_epic_state": active_epic_state,
         "milestone": milestone,
         "reviewed_change_set": manifest_rel,
-        "reviewed_files": serialize_files(reviewed),
-        "excluded_unreviewed_files": serialize_files(excluded),
-        "stale_reviewed_files": stale,
-        "staged_unowned_files": staged_unowned,
-        "excluded_local_files": serialize_files(excluded_local),
+        "review_ref": manifest_data.get("review_ref"),
+        "review_tree": manifest_data.get("review_tree"),
+        "reviewed_scope": manifest_data.get("scope", {}),
+        "reviewed_file_count": len(owned),
+        "reviewed_files": serialize_files(bounded(reviewed)),
+        "reviewed_files_truncated": len(reviewed) > 20,
+        "excluded_unreviewed_file_count": len(excluded),
+        "excluded_unreviewed_files": serialize_files(bounded(excluded)),
+        "excluded_unreviewed_files_truncated": len(excluded) > 20,
+        "stale_reviewed_file_count": len(stale),
+        "stale_reviewed_files": bounded(stale),
+        "stale_reviewed_files_truncated": len(stale) > 20,
+        "staged_unowned_file_count": len(staged_unowned),
+        "staged_unowned_files": bounded(staged_unowned),
+        "staged_unowned_files_truncated": len(staged_unowned) > 20,
+        "excluded_local_file_count": len(excluded_local),
+        "excluded_local_files": serialize_files(bounded(excluded_local)),
         "verification": verification,
         "review": review,
         "open_loops": open_loops,
@@ -849,13 +827,21 @@ def main() -> int:
         print("Refusing actual commit because reviewed path set is empty", file=sys.stderr)
         return 2
 
-    stage_paths = {item.path for item in reviewed}
-    run(["git", "add", "-A", "--", *(literal_pathspec(path) for path in sorted(stage_paths))], root, check=True)
+    review_snapshot.stage_paths_from_commit(root, str(manifest_data.get("review_commit", "")), owned)
     cached = diff_path_set(root, ["git", "diff", "--cached", "--name-only", "-z", "--no-renames"])
     if cached != owned:
         print("Refusing actual commit because cached paths differ from reviewed change set:", file=sys.stderr)
-        print(f"- reviewed: {sorted(owned)}", file=sys.stderr)
-        print(f"- cached: {sorted(cached)}", file=sys.stderr)
+        print(f"- reviewed count: {len(owned)}", file=sys.stderr)
+        print(f"- cached count: {len(cached)}", file=sys.stderr)
+        print(f"- differing sample: {sorted(owned.symmetric_difference(cached))[:20]}", file=sys.stderr)
+        return 2
+
+    tree_code, staged_tree, tree_error = run(["git", "write-tree"], root)
+    expected_tree = str(manifest_data.get("review_tree", ""))
+    if tree_code != 0 or staged_tree != expected_tree:
+        print("Refusing actual commit because staged tree differs from reviewed tree:", file=sys.stderr)
+        print(f"- reviewed tree: {expected_tree}", file=sys.stderr)
+        print(f"- staged tree: {staged_tree or tree_error}", file=sys.stderr)
         return 2
 
     temporary_message: Path | None = None
@@ -863,11 +849,7 @@ def main() -> int:
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
             handle.write(message)
             temporary_message = Path(handle.name)
-        run(
-            ["git", "commit", "--only", "-F", str(temporary_message), "--", *(literal_pathspec(path) for path in sorted(owned))],
-            root,
-            check=True,
-        )
+        run(["git", "commit", "-F", str(temporary_message)], root, check=True)
     finally:
         if temporary_message is not None:
             temporary_message.unlink(missing_ok=True)
@@ -875,18 +857,20 @@ def main() -> int:
     committed = diff_path_set(root, ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "--no-renames", "HEAD^", "HEAD"])
     if committed != owned:
         print("Commit created but postcondition failed: committed paths differ from reviewed set", file=sys.stderr)
-        print(f"- reviewed: {sorted(owned)}", file=sys.stderr)
-        print(f"- committed: {sorted(committed)}", file=sys.stderr)
+        print(f"- reviewed count: {len(owned)}", file=sys.stderr)
+        print(f"- committed count: {len(committed)}", file=sys.stderr)
+        print(f"- differing sample: {sorted(owned.symmetric_difference(committed))[:20]}", file=sys.stderr)
         return 2
-    evidence_errors = commit_manifest_errors(root, manifest_path)
-    if evidence_errors:
-        print("Commit created but postcondition failed: committed content differs from review evidence", file=sys.stderr)
-        for error in evidence_errors:
-            print(f"- {error}", file=sys.stderr)
+
+    post_tree_code, committed_tree, post_tree_error = run(["git", "rev-parse", "HEAD^{tree}"], root)
+    if post_tree_code != 0 or committed_tree != expected_tree:
+        print("Commit created but postcondition failed: committed tree differs from reviewed tree", file=sys.stderr)
+        print(f"- reviewed tree: {expected_tree}", file=sys.stderr)
+        print(f"- committed tree: {committed_tree or post_tree_error}", file=sys.stderr)
         return 2
-    manifest_path.unlink(missing_ok=True)
     _, commit_hash, _ = run(["git", "rev-parse", "--short", "HEAD"], root)
-    print(f"Committed: {commit_hash}")
+    print(f"Committed reviewed Git tree: {commit_hash}")
+    print(f"Retained review snapshot for advance: {manifest_data.get('review_ref')}")
     return 0
 
 

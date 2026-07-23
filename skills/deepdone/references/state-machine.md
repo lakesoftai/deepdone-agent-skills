@@ -9,26 +9,32 @@ Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed
 ### DD-STATE-001: Review pass owns completion
 
 - Rule: Only a latest Review result of `pass` may make an epic `complete` or roadmap state `complete-pending-advance`.
-- Applies to: `deepdone-orchestrate`, `phase-implement`, `phase-verify`, `phase-review`, `deepdone-advance`, `phase-sync`, `phase-commit`
+- Applies to: `deepdone`, `phase-implement`, `phase-verify`, `phase-review`, `phase-advance`, `phase-sync`, `phase-commit`
 - Evidence: Latest Review entry is `pass`, ledger Status is `complete`, and roadmap state is `complete-pending-advance` when a roadmap exists.
 
 ### DD-STATE-002: Changes invalidate review
 
 - Rule: Any behavior-changing implementation or fixup after review appends a newer pending Review entry and routes through verification before review.
-- Applies to: `deepdone-orchestrate`, `phase-implement`, `phase-fixup`, `phase-verify`, `phase-review`
+- Applies to: `deepdone`, `phase-implement`, `phase-fixup`, `phase-verify`, `phase-review`
 - Evidence: Latest Review entry is `pending`, ledger remains active, and Next Action names verification.
 
-### DD-REVIEW-001: Review identifies exact paths
+### DD-REVIEW-001: Review captures exact Git snapshot
 
-- Rule: A passing review of dirty work records one exact reviewed change set with review ID, base HEAD, local manifest path, and repository-relative paths.
-- Applies to: `phase-review`, `phase-commit`, `deepdone-advance`, `phase-sync`
-- Evidence: Latest passing Review entry contains all required change-set fields and its manifest validates against current repository state.
+- Rule: A passing review of dirty work records compact reviewed scope, captures exact version-controlled state as a private Git review ref, and stores its object IDs in a local manifest.
+- Applies to: `phase-review`, `phase-commit`, `phase-advance`, `phase-sync`
+- Evidence: Latest passing Review contains review ID, base HEAD, manifest path, scope, and development-evidence roles; manifest resolves to one unchanged Git commit and tree under `refs/deepdone/reviews/`.
 
-### DD-COMMIT-001: Commit contains only reviewed unchanged paths
+### DD-EVIDENCE-001: Development state is evidence, not commit ownership
 
-- Rule: An actual commit may stage and commit only paths in the latest reviewed change set, and every path must be unchanged since capture.
+- Rule: Active epic ledger and optional roadmap are filesystem-hashed development evidence regardless of Git tracking or ignore state; they never become commit candidates merely because review depends on them.
+- Applies to: `phase-review`, `phase-commit`, `phase-advance`, `phase-sync`
+- Evidence: Schema-v2 manifest contains one `ledger` evidence record and optional `roadmap` record, while Git-reviewed paths are derived only from the private review snapshot.
+
+### DD-COMMIT-001: Commit reproduces reviewed Git tree
+
+- Rule: An actual commit may stage only Git-derived reviewed paths, every reviewed byte and mode must remain unchanged, and resulting commit tree must equal the reviewed tree.
 - Applies to: `phase-review`, `phase-commit`
-- Evidence: Pre-commit cached paths and resulting commit paths exactly equal the manifest path set.
+- Evidence: Temporary worktree projection, real-index tree, and resulting commit tree all equal manifest `review_tree`; committed paths equal Git diff from `base_head` to `review_ref`.
 
 ### DD-COMMIT-002: Unowned staged paths block commit
 
@@ -36,16 +42,16 @@ Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed
 - Applies to: `phase-commit`
 - Evidence: Candidate reports staged-unowned paths and actual commit refuses while any exist.
 
-### DD-ADVANCE-001: Dirty reviewed work blocks advance
+### DD-ADVANCE-001: Uncommitted or drifted reviewed work blocks advance
 
-- Rule: A completed epic cannot advance while any path in its latest reviewed change set remains dirty.
-- Applies to: `deepdone-orchestrate`, `deepdone-advance`, `phase-sync`
-- Evidence: Advance stops with exact dirty reviewed paths until they are committed or explicitly abandoned outside DeepDone.
+- Rule: A completed epic cannot advance until reviewed Git state is committed and clean and captured development evidence remains unchanged.
+- Applies to: `deepdone`, `phase-advance`, `phase-sync`
+- Evidence: Advance gate projects current HEAD over Git-derived reviewed paths, compares it with `review_tree`, checks dirty reviewed paths, and verifies evidence hashes.
 
 ### DD-DRIFT-001: Ambiguous ownership blocks
 
 - Rule: Sync may repair mechanical state drift only when one work unit and its owned paths are clear; ambiguous ownership blocks.
-- Applies to: `deepdone-orchestrate`, `phase-review`, `phase-sync`
+- Applies to: `deepdone`, `phase-review`, `phase-sync`
 - Evidence: Reconciliation names one work unit and exact scope, or records a blocker without modifying ambiguous work.
 
 ## Durable States
@@ -77,9 +83,15 @@ New ledgers contain `## Review` after `## Verification Log`:
   review-id: 20260711T120000Z-a1b2c3d4
   base-head: 0123456789abcdef0123456789abcdef01234567
   manifest: .deepdone/reviews/20260711T120000Z-a1b2c3d4.json
-  paths:
-    - src/example.py
-    - notes/epics/2026-07-11-example.md
+  scope:
+    include:
+      - src/
+      - tests/
+    exclude:
+      - scratch/
+  evidence:
+    ledger: notes/epics/2026-07-11-example.md
+    roadmap: notes/roadmap.md
   notes: no blocking findings
 ```
 
@@ -87,9 +99,19 @@ Allowed results: `pending`, `pass`, `fail`, `blocked`.
 
 Latest entry wins. Missing `## Review` means `pending`. Add the section during review or sync when needed; do not require bulk migration.
 
-Legacy passing entries without change-set fields remain readable. They may describe completed work, but they cannot authorize actual commit of dirty work until review runs again and captures a manifest.
+Legacy passing entries and schema-v1 manifests remain readable. They may describe completed work, but they cannot authorize an actual commit. Advance may accept them only when the repository is already clean so old completed work is not stranded.
 
-The Markdown entry is the agent contract and human-readable path record. The ignored JSON manifest is deterministic gate evidence only. Manifest schema version is `1`.
+Markdown is the human review decision, compact scope declaration, and evidence-role record. It never lists every matched file.
+
+Schema-v2 JSON is compact deterministic gate evidence. It stores:
+
+- review ID, ledger path, and base HEAD
+- private `review_ref`, synthetic `review_commit`, and `review_tree`
+- changed-path count
+- normalized include and exclude roots
+- direct filesystem hashes for recognized evidence roles
+
+It never stores a bulk path array. Git diff between `base_head` and `review_ref` is the exact path authority. Manifest schema version is `2`.
 
 Any behavior-changing implementation or fixup after review makes the previous review stale. Route through verification and review again.
 
@@ -119,7 +141,7 @@ Use first matching rule:
 1. `blocked_needs_user`: STOP file, ambiguous active work, unexpected dirty files, missing acceptance, risky judgment, missing required authorization, or no safe progress.
 2. `needs_intake`: non-trivial requirements exist and no suitable ledger exists.
 3. `needs_resume`: one recoverable durable-state mismatch exists.
-4. `needs_advance_roadmap`: user invoked advance, or a later supervisor run finds a reviewed complete epic with a clean reviewed path set that must activate queued work or finalize roadmap completion.
+4. `needs_advance_roadmap`: user invoked advance, or a later supervisor run finds a reviewed complete epic with a committed clean review snapshot and unchanged evidence that must activate queued work or finalize roadmap completion.
 5. `needs_tech_decision`: next milestone has an unresolved material or version-sensitive choice.
 6. `ready_to_implement`: exactly one milestone is next with known acceptance and verification.
 7. `needs_verification`: implement or fixup changed code. This transition is mandatory even when the phase ran fresh feedback checks; verify may reuse complete current evidence.
@@ -147,7 +169,7 @@ A classification describes repository state. It never grants authorization.
 | Advance | Activate exactly one queued epic, or complete roadmap |
 | Commit | Stop in `until-commit` and `end-to-end`; never auto-advance |
 
-Commit remains optional as an integration action, but direct advance cannot cross dirty reviewed work. Commit the reviewed set or explicitly abandon it before activating the next epic.
+Commit remains optional as an integration action, but direct advance cannot cross uncommitted or drifted reviewed work. Commit the reviewed snapshot or explicitly abandon it before activating the next epic.
 
 ## Work Ownership
 
@@ -174,7 +196,7 @@ Block instead when any are true:
 - dirty-file ownership is unknown
 - reconciling would require product, architecture, security, migration, or data-risk judgment
 
-Clearly unrelated dirty files may coexist with active work only when active-scope ownership is provable. Review and commit must exclude and preserve them.
+Clearly unrelated dirty files may coexist with active work only when active-scope ownership is provable. Review snapshot and commit must exclude and preserve them. Ignored ledger and roadmap are proven by direct hashes, not dirty-path membership.
 
 ## Retired Invariants
 

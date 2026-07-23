@@ -1,10 +1,4 @@
----
-name: deepdone-advance
-slug: deepdone-advance
-description: Move a multi-epic initiative from the completed active epic to the next queued epic. Update the roadmap, create exactly one new active epic ledger, and keep future epics queued. Use only when the current active epic is complete or when a roadmap exists with no active epic yet.
----
-
-# DeepDone Advance
+# Advance Phase
 
 ## Purpose
 
@@ -12,10 +6,10 @@ Advance a multi-epic initiative without creating planning sprawl.
 
 ## Conforms To
 
-- `DD-STATE-001`, `DD-REVIEW-001`
+- `DD-STATE-001`, `DD-REVIEW-001`, `DD-EVIDENCE-001`
 - `DD-ADVANCE-001`
 
-This skill is the only default mechanism that should:
+This phase is the only default mechanism that should:
 
 - rotate the active epic in a roadmap
 - create the next epic ledger
@@ -33,7 +27,16 @@ Before advancing, confirm one of these is true:
 
 If the active epic is not truly complete, stop and explain why advancing is premature.
 
-When an active epic exists, run bundled `scripts/check_reviewed_change_set.py` with its ledger path. Stop when any reviewed path is dirty. A missing manifest is acceptable only when all recorded reviewed paths are clean, such as after a successful or manual commit.
+When an active epic exists, run bundled `<skill-dir>/scripts/check_reviewed_change_set.py` with its ledger path. Resolve `<skill-dir>` as the loaded `deepdone` directory containing this reference.
+
+Schema-v2 gate must prove:
+
+- private review ref still resolves to expected synthetic commit and tree
+- reviewed paths derived by Git are committed and clean
+- current committed projection equals reviewed tree
+- active ledger and optional roadmap still match captured hashes
+
+Stop on any failure. Schema-v1 or missing manifest is accepted only for already-committed legacy work when entire repository is clean.
 
 ## What To Read
 
@@ -126,7 +129,7 @@ Carry forward only what the next epic actually needs:
 
 Do not copy old verification logs or stale open loops that no longer matter.
 
-Do not advance across dirty reviewed work. Commit it or let the user explicitly abandon it outside DeepDone first. Never stash, reset, discard, or abandon it automatically. Stop for ambiguous dirty ownership.
+Do not advance across uncommitted or drifted reviewed work. Commit it or let the user explicitly abandon it outside DeepDone first. Never stash, reset, discard, or abandon it automatically. Stop for ambiguous dirty ownership.
 
 ## Plan Mode Policy
 
@@ -138,7 +141,7 @@ If no planning mode exists, perform the same compact checks in normal execution 
 
 1. Locate the roadmap.
 2. Verify the current active epic is complete with latest review result `pass`, or confirm there is no active epic yet.
-3. Prove every path in latest reviewed change set is clean.
+3. Prove reviewed Git snapshot is committed and clean and captured development evidence is unchanged.
 4. Mark the completed epic entry `[x]` if needed.
 5. Select the next queued epic whose dependencies are satisfied.
 6. Create exactly one new epic ledger for that epic.
@@ -148,7 +151,8 @@ If no planning mode exists, perform the same compact checks in normal execution 
 10. If no queued epics remain, set:
    - `Active Epic` to `name: none`, `ledger: none`, `state: none`
    - roadmap `Status` to `complete`
-11. Return the new active epic and exact next action.
+11. After durable roadmap and ledger writes succeed, run the same helper with `--cleanup-after-advance` against completed ledger. This removes only its validated manifest and exact private review ref.
+12. Return the new active epic and exact next action.
 
 ## Guardrails
 
@@ -157,6 +161,7 @@ If no planning mode exists, perform the same compact checks in normal execution 
 - do not keep roadmap `Status: active` if no queued or active epics remain
 - do not reopen a completed epic unless user explicitly asks
 - do not mutate unrelated epic ledgers
+- do not remove private review ref before durable advance state succeeds
 
 ## Output
 

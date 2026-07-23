@@ -12,22 +12,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-PUBLIC_SKILLS = ["deepdone-advance", "deepdone-orchestrate"]
+PUBLIC_SKILLS = ["deepdone"]
 PHASES = {
-    "phase-archive": "skills/deepdone-orchestrate/references/phase-archive.md",
-    "phase-commit": "skills/deepdone-orchestrate/references/phase-commit.md",
-    "phase-decide": "skills/deepdone-orchestrate/references/phase-decide.md",
-    "phase-fixup": "skills/deepdone-orchestrate/references/phase-fixup.md",
-    "phase-implement": "skills/deepdone-orchestrate/references/phase-implement.md",
-    "phase-plan": "skills/deepdone-orchestrate/references/phase-plan.md",
-    "phase-pr": "skills/deepdone-orchestrate/references/phase-pr.md",
-    "phase-review": "skills/deepdone-orchestrate/references/phase-review.md",
-    "phase-sync": "skills/deepdone-orchestrate/references/phase-sync.md",
-    "phase-verify": "skills/deepdone-orchestrate/references/phase-verify.md",
+    f"phase-{name}": f"skills/deepdone/references/phase-{name}.md"
+    for name in ("advance", "archive", "commit", "decide", "fixup", "implement", "plan", "pr", "review", "sync", "verify")
 }
 CONTRACT_SUBJECTS = set(PUBLIC_SKILLS).union(PHASES)
 IMPLICIT_ENTRY_SKILLS = set(PUBLIC_SKILLS)
-ORCHESTRATOR_MAX_LINES = 250
+SUPERVISOR_MAX_LINES = 250
 REQUIRED_INVARIANT_IDS = {
     "DD-ADVANCE-001",
     "DD-AUTH-001",
@@ -35,6 +27,7 @@ REQUIRED_INVARIANT_IDS = {
     "DD-COMMIT-001",
     "DD-COMMIT-002",
     "DD-DRIFT-001",
+    "DD-EVIDENCE-001",
     "DD-MODE-001",
     "DD-MODE-002",
     "DD-OWN-001",
@@ -46,16 +39,16 @@ INVARIANT_ID_RE = re.compile(r"^DD-[A-Z]+-[0-9]{3}$")
 
 HELPER_SCRIPTS = [
     "evals/run_cross_agent.py",
-    "skills/deepdone-advance/scripts/check_reviewed_change_set.py",
-    "skills/deepdone-orchestrate/scripts/commit_progress.py",
-    "skills/deepdone-orchestrate/scripts/inspect_deepdone_state.py",
-    "skills/deepdone-orchestrate/scripts/capture_reviewed_change_set.py",
+    "skills/deepdone/scripts/check_reviewed_change_set.py",
+    "skills/deepdone/scripts/commit_progress.py",
+    "skills/deepdone/scripts/inspect_deepdone_state.py",
+    "skills/deepdone/scripts/capture_reviewed_change_set.py",
 ]
 
 MANIFEST_SCHEMA_SCRIPTS = [
-    "skills/deepdone-advance/scripts/check_reviewed_change_set.py",
-    "skills/deepdone-orchestrate/scripts/commit_progress.py",
-    "skills/deepdone-orchestrate/scripts/capture_reviewed_change_set.py",
+    "skills/deepdone/scripts/check_reviewed_change_set.py",
+    "skills/deepdone/scripts/commit_progress.py",
+    "skills/deepdone/scripts/capture_reviewed_change_set.py",
 ]
 
 EXAMPLES = [
@@ -167,10 +160,10 @@ def check_skill_references(errors: list[str]) -> None:
 
 
 def check_orchestrator_budget(errors: list[str]) -> None:
-    path = ROOT / "skills" / "deepdone-orchestrate" / "SKILL.md"
+    path = ROOT / "skills" / "deepdone" / "SKILL.md"
     line_count = len(read_text(path).splitlines())
-    if line_count > ORCHESTRATOR_MAX_LINES:
-        errors.append(f"deepdone-orchestrate: {line_count} lines exceeds {ORCHESTRATOR_MAX_LINES}")
+    if line_count > SUPERVISOR_MAX_LINES:
+        errors.append(f"deepdone: {line_count} lines exceeds {SUPERVISOR_MAX_LINES}")
 
 
 def markdown_section(text: str, name: str) -> str:
@@ -187,8 +180,8 @@ def parse_contract_invariants(errors: list[str]) -> tuple[dict[str, set[str]], s
     active: dict[str, set[str]] = {}
     retired: set[str] = set()
     references = (
-        ROOT / "skills" / "deepdone-orchestrate" / "references" / "state-machine.md",
-        ROOT / "skills" / "deepdone-orchestrate" / "references" / "safety-and-modes.md",
+        ROOT / "skills" / "deepdone" / "references" / "state-machine.md",
+        ROOT / "skills" / "deepdone" / "references" / "safety-and-modes.md",
     )
     for path in references:
         text = read_text(path)
@@ -216,7 +209,7 @@ def parse_contract_invariants(errors: list[str]) -> tuple[dict[str, set[str]], s
                 if not re.search(rf"^-\s+{field}:\s+\S", block, flags=re.MULTILINE):
                     errors.append(f"{invariant_id}: missing {field}")
             applies_match = re.search(r"^-\s+Applies to:\s+(.+)$", block, flags=re.MULTILINE)
-            applies = set(re.findall(r"`((?:deepdone|phase)-[a-z0-9-]+)`", applies_match.group(1))) if applies_match else set()
+            applies = set(re.findall(r"`(deepdone|phase-[a-z0-9-]+)`", applies_match.group(1))) if applies_match else set()
             if not applies:
                 errors.append(f"{invariant_id}: has no affected contract subjects")
             unknown = applies.difference(CONTRACT_SUBJECTS)
@@ -270,13 +263,13 @@ def check_manifest_schema_versions(errors: list[str]) -> None:
             errors.append(f"{rel}: missing MANIFEST_SCHEMA_VERSION")
         else:
             versions[rel] = int(match.group(1))
-    if versions and set(versions.values()) != {1}:
+    if versions and set(versions.values()) != {2}:
         errors.append(f"reviewed change-set schema mismatch: {versions}")
 
 
 def check_logging_removed(errors: list[str]) -> None:
     removed_paths = (
-        ROOT / "skills" / "deepdone-orchestrate" / "scripts" / "append_run_audit.py",
+        ROOT / "skills" / "deepdone" / "scripts" / "append_run_audit.py",
         ROOT / "tests" / "test_append_run_audit.py",
         ROOT / "examples" / "run-audit.jsonl",
     )
@@ -317,7 +310,17 @@ def check_examples(errors: list[str]) -> None:
             errors.append(f"examples/pr-body.md: missing {required}")
 
     commit_candidate = read_text(ROOT / "examples" / "commit-candidate.md")
-    for required in ("## Reviewed Files", "## Excluded Unreviewed Files", "## Stale Reviewed Files", "## Staged Unowned Files", "review-id:", "manifest:", "paths:"):
+    for required in (
+        "## Reviewed Git Snapshot",
+        "## Reviewed Status Sample",
+        "## Excluded Unreviewed Files",
+        "## Stale Reviewed Path Sample",
+        "## Staged Unowned Files",
+        "review-id:",
+        "manifest:",
+        "scope:",
+        "evidence:",
+    ):
         if commit_candidate and required not in commit_candidate:
             errors.append(f"examples/commit-candidate.md: missing {required}")
 

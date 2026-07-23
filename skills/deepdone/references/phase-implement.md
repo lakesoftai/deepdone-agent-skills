@@ -8,7 +8,7 @@
 
 Implement one milestone, not the whole universe.
 
-This phase is the execution engine for:
+This internal phase is the execution engine for:
 
 - a small task with no ledger, or
 - the currently active epic in a single-epic or multi-epic workflow
@@ -116,7 +116,7 @@ If the current milestone finishes all planned implementation work:
 
 - keep epic ledger `Status` as `active`
 - keep roadmap entry and `Active Epic.state` as `active`
-- set `Next Action` to run the Verify phase through `$deepdone-orchestrate`
+- set `Next Action` to run the Verify phase through `$deepdone`
 - do not mark the epic complete or advanceable
 
 Only the Review phase may mark an epic `complete` and roadmap state `complete-pending-advance` after a passing review.

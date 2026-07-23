@@ -2,7 +2,7 @@
 """Inspect DeepDone repository state and print JSON.
 
 This script intentionally does not decide the final next step. It gathers stable
-signals for the smart agent UI supervisor skill.
+signals for the single public DeepDone skill.
 """
 
 from __future__ import annotations

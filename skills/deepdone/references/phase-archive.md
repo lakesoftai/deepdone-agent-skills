@@ -8,7 +8,7 @@
 
 Close the post-commit loop after work has merged or otherwise been released.
 
-This phase archives completed epic state.
+This internal phase archives completed epic state.
 It is not roadmap advancement, PR creation, merge, or deploy.
 
 Archive only when the current user explicitly requests it, directly or through supervisor context carrying `archive: allowed` with source `exact user request`.

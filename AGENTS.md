@@ -1,15 +1,14 @@
 # DeepDone Skills
 
-Agent-driven workflow management for software projects. Two public skills expose the workflow. `deepdone-orchestrate` routes between bundled internal phases.
+Agent-driven workflow management for software projects. One public skill exposes the workflow. `deepdone` routes between bundled internal phases.
 
-## Skills
+## Public Skill
 
 | Skill | Role |
 |---|---|
-| `deepdone-orchestrate` | Supervisor: classifies state, loads one internal phase, enforces mode budgets and safety gates |
-| `deepdone-advance` | Move multi-epic initiative to next queued epic |
+| `deepdone` | Classifies state, loads one internal phase, enforces mode budgets and safety gates |
 
-Internal orchestrator phases are plan, sync, decide, implement, verify, review, fixup, commit, PR, and archive. They live as one-level reference modules under `deepdone-orchestrate`; they are not selector-visible skills.
+Internal phases are plan, sync, advance, decide, implement, verify, review, fixup, commit, PR, and archive. They live as one-level reference modules under `deepdone`; they are not selector-visible skills.
 
 ## Workflow
 
@@ -21,7 +20,7 @@ requirements -> plan -> sync -> advance -> decide -> implement -> verify -> revi
                                                          +-- review loop --+
 ```
 
-The orchestrator (`deepdone-orchestrate`) drives this state machine. It inspects repo state, classifies the current position, and loads exactly one matching internal phase.
+`deepdone` drives this state machine. It inspects repo state, classifies the current position, and loads exactly one matching internal phase.
 
 `pr` and `archive` are post-commit lifecycle steps. They are not automatic side effects of commit:
 
@@ -31,7 +30,7 @@ The orchestrator (`deepdone-orchestrate`) drives this state machine. It inspects
 ## Quick Start
 
 ```
-Use $deepdone-orchestrate.
+Use $deepdone.
 Requirements: <your goal>
 Mode: one-step.
 ```
@@ -39,7 +38,7 @@ Mode: one-step.
 For a full automation run through local commit:
 
 ```
-Use $deepdone-orchestrate.
+Use $deepdone.
 Requirements: <your goal>
 Mode: end-to-end.
 ```
@@ -47,7 +46,7 @@ Mode: end-to-end.
 For post-commit handoff:
 
 ```
-Use $deepdone-orchestrate.
+Use $deepdone.
 Requested phase: PR.
 Prepare a PR/MR draft for the current DeepDone work.
 ```
@@ -55,7 +54,7 @@ Prepare a PR/MR draft for the current DeepDone work.
 For completed work archival:
 
 ```
-Use $deepdone-orchestrate.
+Use $deepdone.
 Requested phase: archive.
 Archive <ledger path> after merge/ref <PR URL, merge SHA, or release tag>.
 ```
@@ -65,12 +64,12 @@ Archive <ledger path> after merge/ref <PR URL, merge SHA, or release tag>.
 - **Epic ledger**: `notes/epics/YYYY-MM-DD-<slug>.md`. Standard sections: Summary, Constraints, Milestones, Decisions, Verification Log, Review, Open Loops, Next Action, Status.
 - **Archived epic ledger**: `notes/archive/epics/YYYY-MM-DD-<slug>.md`. Completed epic state after explicit archive.
 - **Roadmap**: `notes/roadmap.md`. For multi-epic initiatives. Tracks cross-cutting decisions, epic queue, and active epic.
-- **Reviewed change set**: Latest passing Review records exact paths plus ignored deterministic evidence under `.deepdone/reviews/`. Commit may include only that unchanged set.
+- **Reviewed Git snapshot**: Latest passing Review records compact scope and evidence roles. Git stores exact code under `refs/deepdone/reviews/<review-id>`; compact schema-v2 manifest under `.deepdone/reviews/` stores object IDs, path count, and direct hashes for ignored ledger and optional roadmap.
 - **`.deepdone/STOP`**: Kill switch. If this file exists, all skills halt immediately.
 - **Commit authorization**: Commits only happen in `until-commit`/`end-to-end` modes or on explicit user request. Default is candidate-only.
 - **PR/MR creation authorization**: PR/MR drafts are safe by default. Creation and push require explicit approval.
 - **Archive authorization**: Archive requires explicit current-run user authority. Merge or release evidence never grants authority.
-- **Advance gate**: Reviewed paths must be clean before next epic activation. No automatic stash, reset, discard, or abandonment.
+- **Advance gate**: Reviewed Git snapshot must be committed and clean, and captured ledger or roadmap evidence must remain unchanged. No automatic stash, reset, discard, or abandonment.
 
 ## Safety
 

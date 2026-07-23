@@ -4,7 +4,7 @@
 
 Choose the correct execution unit before coding.
 
-This phase must not force all non-trivial work into one epic.
+This internal phase must not force all non-trivial work into one epic.
 Its first job is scope classification.
 
 Possible outcomes:

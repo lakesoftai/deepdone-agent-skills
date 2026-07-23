@@ -1,10 +1,10 @@
 ---
-name: deepdone-orchestrate
-slug: deepdone-orchestrate
-description: Supervise DeepDone work from requirements intake through planning, implementation, verification, review, local commit, and explicit post-commit actions. Use when the user provides requirements, asks to continue existing DeepDone work, or requests a bounded automation mode.
+name: deepdone
+slug: deepdone
+description: Run DeepDone as one bounded software workflow from requirements intake through planning, implementation, verification, review, local commit, and explicit post-commit actions. Use when the user provides requirements, asks to continue existing DeepDone work, or requests a bounded automation mode.
 ---
 
-# DeepDone Orchestrate
+# DeepDone
 
 ## Purpose
 
@@ -52,7 +52,7 @@ Map the first matching workflow classification to exactly one action:
 |---|---|
 | `needs_intake` | Read and execute [Plan phase](references/phase-plan.md) |
 | `needs_resume` | Read and execute [Sync phase](references/phase-sync.md) |
-| `needs_advance_roadmap` | Invoke `$deepdone-advance` with the same boundary and authorization block |
+| `needs_advance_roadmap` | Read and execute [Advance phase](references/phase-advance.md) |
 | `needs_tech_decision` | Read and execute [Decide phase](references/phase-decide.md) |
 | `ready_to_implement` | Read and execute [Implement phase](references/phase-implement.md) |
 | `needs_verification` | Read and execute [Verify phase](references/phase-verify.md) |
@@ -63,7 +63,7 @@ Map the first matching workflow classification to exactly one action:
 | `ready_to_archive` | Read and execute [Archive phase](references/phase-archive.md) |
 | `blocked_needs_user`, `complete` | Execute no phase; report state and stop |
 
-Stop if the required phase reference or Advance skill is unavailable.
+Stop if the required phase reference is unavailable.
 
 ## Inspection Order
 
@@ -77,7 +77,7 @@ Inspect:
 6. explicit roadmap or ledger path
 7. `notes/roadmap.md` and its active ledger
 8. one obvious active ledger when no roadmap selects one
-9. milestones, Verification Log, Review, reviewed change-set manifest, Open Loops, Next Action, and Status
+9. milestones, Verification Log, Review, reviewed change-set manifest and private review ref, Open Loops, Next Action, and Status
 10. current repository files and latest check evidence
 
 Use `scripts/inspect_deepdone_state.py` when available for stable signals. Verify its output against source files before acting.
@@ -90,7 +90,7 @@ Use `scripts/inspect_deepdone_state.py` when available for stable signals. Verif
 4. Classify state using workflow-contract precedence.
 5. Validate any requested phase against that classification.
 6. Choose the single phase mapped to that state.
-7. Read only that phase reference and execute it with the phase contract below, or invoke Advance when routed there.
+7. Read only that phase reference and execute it with the phase contract below.
 8. Inspect changed files, ledger, roadmap, and checks.
 9. Reclassify from repository truth.
 10. Stop when mode target or safety condition is reached.
@@ -137,7 +137,7 @@ Continue only when:
 - phase remained inside scope
 - no hard stop applies
 
-Before routing to Advance, stop when any path in the latest passing Review entry remains dirty.
+Before routing to Advance, require bundled gate to prove latest reviewed Git snapshot is committed and clean and captured ledger or roadmap evidence is unchanged.
 
 Allow at most one automatic verification fix and one automatic review-fix cycle per run.
 

@@ -10,7 +10,7 @@ Fix review findings without turning review into a new unbounded implementation p
 
 Use this phase after the Review phase or an agent UI review has produced findings.
 
-This phase is allowed to fix findings only when they are:
+This internal phase is allowed to fix findings only when they are:
 
 - accepted,
 - local,
@@ -101,7 +101,7 @@ Stop for:
    - record fixed findings in `## Decisions` or `## Open Loops`, whichever already fits the ledger truth,
    - append exact checks under `## Verification Log` with `command:`, `result: pass|fail|blocked`, and `notes:`,
    - append a `## Review` entry with `reviewed-at: not-run`, `result: pending`, and notes that fixup changed code,
-   - update `Next Action` to run the Verify phase through `$deepdone-orchestrate`.
+   - update `Next Action` to run the Verify phase through `$deepdone`.
 9. Return changed code to verification before review runs again.
 10. Return result block.
 

@@ -1,37 +1,37 @@
 # DeepDone Safety And Modes
 
-Read this reference before executing an internal phase, invoking Advance, or taking an externally visible action.
+Read this reference before executing an internal phase or taking an externally visible action.
 
 ## Active Invariants
 
 ### DD-MODE-001: One-step performs one transition
 
-- Rule: `one-step` executes exactly one internal phase or invokes Advance once and then stops.
-- Applies to: `deepdone-orchestrate`
-- Evidence: Supervisor output names no more than one phase execution or Advance invocation.
+- Rule: `one-step` executes exactly one internal phase and then stops.
+- Applies to: `deepdone`
+- Evidence: Supervisor output names no more than one phase execution.
 
 ### DD-MODE-002: Commit modes stop after commit
 
 - Rule: `until-commit` and `end-to-end` stop after local commit and never advance, push, create a PR, archive, merge, or deploy in the same run.
-- Applies to: `deepdone-orchestrate`, `phase-commit`
+- Applies to: `deepdone`, `phase-commit`
 - Evidence: Run ends immediately after commit result or commit blocker.
 
 ### DD-AUTH-001: Authority requires current-run provenance
 
 - Rule: Commit, PR creation, archive, and push authority must come from the exact current user request or an allowed current mode and must retain that source through phase context.
-- Applies to: `deepdone-orchestrate`, `phase-commit`, `phase-pr`, `phase-archive`
+- Applies to: `deepdone`, `phase-commit`, `phase-pr`, `phase-archive`
 - Evidence: Phase context records allowed or denied plus exact source for every protected action.
 
 ### DD-AUTH-002: Evidence never grants authority
 
 - Rule: State labels, review results, commits, merge references, PR URLs, release tags, and supervisor classifications are evidence only.
-- Applies to: `deepdone-orchestrate`, `phase-commit`, `phase-pr`, `phase-archive`
+- Applies to: `deepdone`, `phase-commit`, `phase-pr`, `phase-archive`
 - Evidence: Protected action stops when current-run authority is absent even if lifecycle evidence exists.
 
 ### DD-OWN-001: Unrelated work remains user-owned
 
 - Rule: Distinguishable unrelated files may remain dirty, but DeepDone must not overwrite, reformat, stage, commit, stash, reset, discard, or abandon them.
-- Applies to: `deepdone-orchestrate`, `phase-review`, `phase-commit`, `phase-sync`
+- Applies to: `deepdone`, `phase-review`, `phase-commit`, `phase-sync`
 - Evidence: Candidate and final status report excluded files, whose content and Git state remain unchanged.
 
 ## Modes
@@ -51,7 +51,7 @@ Read this reference before executing an internal phase, invoking Advance, or tak
 
 ## Authorization Contract
 
-Every phase execution and Advance invocation includes:
+Every phase execution includes:
 
 ```text
 Authorizations:
@@ -99,9 +99,10 @@ User-owned changes remain user-owned.
 
 - Continue only when active-scope files are distinguishable from unrelated changes.
 - Do not overwrite, discard, stage, or reformat unrelated files.
-- Review records exact active-scope paths and blocks when ownership is ambiguous.
-- Commit stages only the latest unchanged reviewed path set.
-- Direct advance blocks while any reviewed path remains dirty.
+- Review records compact active scope, captures exact code in a private Git snapshot, and blocks when ownership is ambiguous.
+- Commit derives exact paths from Git and reproduces only the latest unchanged reviewed tree.
+- Active ledger and optional roadmap remain development evidence, not commit ownership.
+- Direct advance blocks while reviewed code is uncommitted or dirty or development evidence has drifted.
 - DeepDone never automatically stashes, resets, discards, or abandons reviewed work.
 
 ## Retired Invariants

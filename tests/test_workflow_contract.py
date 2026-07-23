@@ -7,8 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACTS = (
-    ROOT / "skills/deepdone-orchestrate/references/state-machine.md",
-    ROOT / "skills/deepdone-orchestrate/references/safety-and-modes.md",
+    ROOT / "skills/deepdone/references/state-machine.md",
+    ROOT / "skills/deepdone/references/safety-and-modes.md",
 )
 REQUIRED = {
     "DD-ADVANCE-001",
@@ -17,6 +17,7 @@ REQUIRED = {
     "DD-COMMIT-001",
     "DD-COMMIT-002",
     "DD-DRIFT-001",
+    "DD-EVIDENCE-001",
     "DD-MODE-001",
     "DD-MODE-002",
     "DD-OWN-001",
@@ -25,11 +26,10 @@ REQUIRED = {
     "DD-STATE-002",
 }
 SUBJECT_PATHS = {
-    "deepdone-advance": ROOT / "skills/deepdone-advance/SKILL.md",
-    "deepdone-orchestrate": ROOT / "skills/deepdone-orchestrate/SKILL.md",
+    "deepdone": ROOT / "skills/deepdone/SKILL.md",
     **{
-        f"phase-{name}": ROOT / f"skills/deepdone-orchestrate/references/phase-{name}.md"
-        for name in ("archive", "commit", "decide", "fixup", "implement", "plan", "pr", "review", "sync", "verify")
+        f"phase-{name}": ROOT / f"skills/deepdone/references/phase-{name}.md"
+        for name in ("advance", "archive", "commit", "decide", "fixup", "implement", "plan", "pr", "review", "sync", "verify")
     },
 }
 
@@ -54,7 +54,7 @@ def contract_invariants() -> dict[str, set[str]]:
             end = matches[index + 1].start() if index + 1 < len(matches) else len(active)
             block = active[match.end() : end]
             applies = re.search(r"^-\s+Applies to:\s+(.+)$", block, flags=re.MULTILINE)
-            invariants[match.group(1)] = set(re.findall(r"`((?:deepdone|phase)-[a-z0-9-]+)`", applies.group(1))) if applies else set()
+            invariants[match.group(1)] = set(re.findall(r"`(deepdone|phase-[a-z0-9-]+)`", applies.group(1))) if applies else set()
     return invariants
 
 

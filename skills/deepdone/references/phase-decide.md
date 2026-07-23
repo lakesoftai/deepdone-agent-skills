@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Make one technical choice with evidence, not vibes.
+Make one technical choice from evidence, not vibes.
 
 ## Source Priority
 

@@ -8,10 +8,10 @@ Prepare or create a focused git commit for completed DeepDone work.
 
 - `DD-STATE-001`, `DD-MODE-002`
 - `DD-AUTH-001`, `DD-AUTH-002`
-- `DD-OWN-001`, `DD-REVIEW-001`
+- `DD-OWN-001`, `DD-REVIEW-001`, `DD-EVIDENCE-001`
 - `DD-COMMIT-001`, `DD-COMMIT-002`
 
-This is a safety gate, not a formatting helper.
+This internal phase is a safety gate, not a formatting helper.
 
 Default behavior is commit candidate only when intent is unclear. Commit only when the current user request explicitly asks for commit, or supervisor context carries `commit: allowed` with source `mode` or `exact user request`.
 
@@ -67,9 +67,11 @@ Before actual commit, all must be true:
 - active ledger is current,
 - verification entries include `result: pass|fail|blocked`, and no failed or blocked check remains unaccepted,
 - latest review result is `pass`,
-- latest passing Review has `review-id`, `base-head`, `manifest`, and exact `paths`,
-- reviewed change-set manifest validates and matches current contents,
-- no staged path exists outside reviewed change set,
+- latest passing Review has `review-id`, `base-head`, `manifest`, compact `scope`, and recognized `evidence`,
+- schema-v2 reviewed change-set manifest validates against private review ref and current contents,
+- current worktree projection over Git-derived reviewed paths equals reviewed tree,
+- active ledger and optional roadmap hashes remain unchanged,
+- no staged path exists outside Git-derived reviewed set,
 - no unresolved Open Loop blocks this commit,
 - commit message accurately describes the diff,
 - no dangerous files are included.
@@ -107,13 +109,27 @@ For an actual commit, use the harness when commit is authorized:
 python3 <skill-dir>/scripts/commit_progress.py --commit --yes --authorized-by <exact-user-request|mode> --reviewed-change-set .deepdone/reviews/<review-id>.json
 ```
 
-Resolve `<skill-dir>` as the loaded `deepdone-orchestrate` directory containing this reference. Do not expect the helper under the target repository's root `scripts/` directory.
+Resolve `<skill-dir>` as the loaded `deepdone` directory containing this reference. Do not expect the helper under the target repository's root `scripts/` directory.
 
 Do not run `git add .`.
 
 When the supervisor provides a ledger path, pass `--ledger <path>` to the harness. This is required when multiple completed single-epic ledgers exist.
 
-The harness stages only exact unchanged manifest paths, including reviewed untracked files. It reports and preserves unrelated unstaged or untracked work. Any unrelated staged path blocks actual commit. It must not create repo-local candidate files by default. Candidate output should go to stdout unless the user explicitly asks for a file.
+The harness asks Git for exact paths between `base-head` and private `review_ref`. It never reads a bulk path list from Markdown or JSON.
+
+Before commit, harness:
+
+- rebuilds reviewed tree from current files through a temporary index
+- verifies ledger and optional roadmap filesystem hashes
+- rejects schema-v1 manifests for dirty work
+- copies exact reviewed tree entries into real index
+- checks real index tree equals reviewed tree
+- commits real index
+- checks resulting commit tree equals reviewed tree
+
+Candidate output stays bounded: count, compact scope, Git ref and tree, and small status samples only. It reports and preserves unrelated unstaged or untracked work. Any unrelated staged path blocks actual commit. It must not create repo-local candidate files by default. Candidate output should go to stdout unless the user explicitly asks for a file.
+
+Successful commit retains schema-v2 manifest and private review ref. Advance owns cleanup after its durable state transition.
 
 If the bundled harness is unavailable, stop. Do not reproduce manifest validation or exact-set staging manually.
 
@@ -126,14 +142,14 @@ If the environment refuses writes to `.git/index`, `.git/HEAD`, or refs, report 
 3. If not eligible, stop and explain exact missing gate.
 4. Prepare a candidate with:
    - summary,
-   - files to stage,
+   - reviewed Git path count, compact scope, and bounded status sample,
    - verification evidence,
    - review evidence,
    - residual risk,
    - commit message.
 5. If user asked only for candidate, stop.
-6. If commit is authorized, require explicit manifest path, validate it, stage exact reviewed files, verify cached path equality, and commit.
-7. Report commit hash if created.
+6. If commit is authorized, require explicit manifest path, validate it, reproduce exact reviewed index tree, and commit.
+7. Verify resulting commit tree and report commit hash if created.
 8. Never push.
 
 ## Commit Message Format

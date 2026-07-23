@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Review local diff like hostile teammate who wants truth.
+Review local diff skeptically, with correctness above agreement.
 
 ## Conforms To
 
 - `DD-STATE-001`, `DD-STATE-002`
 - `DD-OWN-001`, `DD-DRIFT-001`
-- `DD-REVIEW-001`, `DD-COMMIT-001`
+- `DD-REVIEW-001`, `DD-EVIDENCE-001`, `DD-COMMIT-001`
 
 ## Primary Review Axes
 
@@ -72,7 +72,10 @@ On `pass`:
 - create a stable `review-id` from UTC timestamp plus eight random hexadecimal characters
 - record current full `base-head`
 - record manifest path `.deepdone/reviews/<review-id>.json`
-- record every reviewed repository-relative path under `paths`, including changed ledger and roadmap files
+- record compact `scope.include` roots that cover active Git work
+- record narrow `scope.exclude` roots for distinguishable unrelated work inside an included root
+- record active ledger under `evidence.ledger`
+- record `notes/roadmap.md` under `evidence.roadmap` when a roadmap exists
 - mark ledger `Status` as `complete`
 - if roadmap exists, change current queue item from `[-]` to `[x]`
 - set roadmap `Active Epic.state` to `complete-pending-advance`
@@ -88,14 +91,24 @@ Use this passing entry shape:
   review-id: <stable-id>
   base-head: <full-sha>
   manifest: .deepdone/reviews/<review-id>.json
-  paths:
-    - <repo-relative-path>
+  scope:
+    include:
+      - <repo-relative-file-or-directory>
+    exclude:
+      - <unrelated-file-or-directory>
+  evidence:
+    ledger: <repo-relative-ledger-path>
+    roadmap: notes/roadmap.md
   notes: <summary>
 ```
 
-Markdown path list is authoritative for agent behavior. JSON manifest is ignored local gate evidence, never run logging.
+Omit `evidence.roadmap` when no roadmap exists. Keep scope compact. Prefer a few narrow directories or exact files over one entry per changed path. Never make the agent enumerate thousands of files.
 
-On `fail`, keep epic and roadmap active and set `Next Action` to run the Fixup phase through `$deepdone-orchestrate`.
+Markdown is authoritative for review result, compact scope, and evidence roles. Capture helper expands that scope against current Git state, excludes evidence paths from commit ownership, builds a temporary index from `base-head`, writes one reviewed tree, creates one synthetic commit, and stores it under `refs/deepdone/reviews/<review-id>`.
+
+Schema-v2 JSON is ignored local gate evidence, never run logging. It stores Git object IDs, changed-path count, normalized scope, and direct hashes for active ledger and optional roadmap. It contains no bulk path list. Do not edit ledger or roadmap after capture; any later change invalidates evidence and requires a new review capture.
+
+On `fail`, keep epic and roadmap active and set `Next Action` to run the Fixup phase through `$deepdone`.
 
 On `blocked`, mark epic and roadmap blocked and state exact unblock condition.
 
@@ -144,7 +157,7 @@ On `blocked`, mark epic and roadmap blocked and state exact unblock condition.
 5. Check whether tests prove intended behavior.
 6. Classify each finding by severity.
 7. Append structured Review entry and update lifecycle state.
-8. On pass, capture exact reviewed change set with bundled helper.
+8. On pass, capture exact reviewed Git snapshot and development evidence with bundled helper.
 9. Report findings first.
 
 ## Output

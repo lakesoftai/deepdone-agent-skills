@@ -16,17 +16,24 @@ DeepDone:
   - result: pass
 ```
 
-## Reviewed Files
+## Reviewed Git Snapshot
+
+- ref: `refs/deepdone/reviews/20260518T120000Z-a1b2c3d4`
+- tree: `89abcdef0123456789abcdef0123456789abcdef`
+- changed paths: 2
+- include: `src/auth/`
+- include: `tests/`
+
+## Reviewed Status Sample
 
 - `M` `src/auth/middleware.py`
 - `A` `tests/test_auth_errors.py`
-- `M` `notes/epics/2026-05-18-auth-error-cleanup.md`
 
 ## Excluded Unreviewed Files
 
 - `??` `scratch-notes.txt`
 
-## Stale Reviewed Files
+## Stale Reviewed Path Sample
 
 - none
 
@@ -51,10 +58,13 @@ DeepDone:
   review-id: 20260518T120000Z-a1b2c3d4
   base-head: 0123456789abcdef0123456789abcdef01234567
   manifest: .deepdone/reviews/20260518T120000Z-a1b2c3d4.json
-  paths:
-    - src/auth/middleware.py
-    - tests/test_auth_errors.py
-    - notes/epics/2026-05-18-auth-error-cleanup.md
+  scope:
+    include:
+      - src/auth/
+      - tests/
+    exclude:
+  evidence:
+    ledger: notes/epics/2026-05-18-auth-error-cleanup.md
   notes: no blocking findings
 
 ## Open Loops

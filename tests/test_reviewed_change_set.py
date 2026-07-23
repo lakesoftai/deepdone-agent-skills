@@ -11,9 +11,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CAPTURE_SCRIPT = ROOT / "skills/deepdone-orchestrate/scripts/capture_reviewed_change_set.py"
-ADVANCE_SCRIPT = ROOT / "skills/deepdone-advance/scripts/check_reviewed_change_set.py"
-COMMIT_SCRIPT = ROOT / "skills/deepdone-orchestrate/scripts/commit_progress.py"
+CAPTURE_SCRIPT = ROOT / "skills/deepdone/scripts/capture_reviewed_change_set.py"
+ADVANCE_SCRIPT = ROOT / "skills/deepdone/scripts/check_reviewed_change_set.py"
+COMMIT_SCRIPT = ROOT / "skills/deepdone/scripts/commit_progress.py"
 
 
 def load_module(name: str, path: Path):
@@ -33,26 +33,37 @@ class ReviewedChangeSetTests(unittest.TestCase):
     def setUp(self) -> None:
         self.capture = load_module("capture_reviewed_change_set_test", CAPTURE_SCRIPT)
         self.advance = load_module("check_reviewed_change_set_test", ADVANCE_SCRIPT)
-        self.commit = load_module("commit_progress_reviewed_set_test", COMMIT_SCRIPT)
 
     def init_repo(self, root: Path) -> str:
         git(root, "init", "-q")
         git(root, "config", "user.name", "DeepDone Test")
         git(root, "config", "user.email", "deepdone@example.test")
-        (root / ".gitignore").write_text(".deepdone/\n", encoding="utf-8")
+        (root / ".gitignore").write_text(
+            ".deepdone/\nnotes/epics/\nnotes/roadmap.md\n",
+            encoding="utf-8",
+        )
         app = root / "src" / "app.py"
         app.parent.mkdir(parents=True)
         app.write_text("VALUE = 1\n", encoding="utf-8")
         ledger = root / "notes" / "epics" / "demo.md"
         ledger.parent.mkdir(parents=True)
         ledger.write_text("# Demo\n\n## Status\n\nactive\n", encoding="utf-8")
-        git(root, "add", ".gitignore", "src/app.py", "notes/epics/demo.md")
+        git(root, "add", ".gitignore", "src/app.py")
         git(root, "commit", "-qm", "initial")
         return git(root, "rev-parse", "HEAD").stdout.strip()
 
-    def write_passing_ledger(self, root: Path, head: str, paths: list[str], review_id: str = "20260711T120000Z-a1b2c3d4") -> Path:
+    def write_passing_ledger(
+        self,
+        root: Path,
+        head: str,
+        include: list[str],
+        review_id: str = "20260711T120000Z-a1b2c3d4",
+        evidence: dict[str, str] | None = None,
+    ) -> Path:
         ledger = root / "notes" / "epics" / "demo.md"
-        path_lines = "\n".join(f"    - {path}" for path in paths)
+        include_lines = "\n".join(f"      - {path}" for path in include)
+        evidence_values = evidence or {"ledger": "notes/epics/demo.md"}
+        evidence_lines = "\n".join(f"    {role}: {path}" for role, path in evidence_values.items())
         ledger.write_text(
             "# Demo\n\n"
             "## Milestones\n\n- [x] ship demo\n\n"
@@ -66,8 +77,12 @@ class ReviewedChangeSetTests(unittest.TestCase):
             f"  review-id: {review_id}\n"
             f"  base-head: {head}\n"
             f"  manifest: .deepdone/reviews/{review_id}.json\n"
-            "  paths:\n"
-            f"{path_lines}\n"
+            "  scope:\n"
+            "    include:\n"
+            f"{include_lines}\n"
+            "    exclude:\n"
+            "  evidence:\n"
+            f"{evidence_lines}\n"
             "  notes: no blocking findings\n\n"
             "## Open Loops\n\nnone\n\n"
             "## Next Action\n\nPrepare commit.\n\n"
@@ -76,11 +91,10 @@ class ReviewedChangeSetTests(unittest.TestCase):
         )
         return ledger
 
-    def prepare_review(self, root: Path, extra_paths: list[str] | None = None) -> Path:
+    def prepare_review(self, root: Path, include: list[str] | None = None) -> Path:
         head = self.init_repo(root)
         (root / "src" / "app.py").write_text("VALUE = 2\n", encoding="utf-8")
-        paths = ["src/app.py", "notes/epics/demo.md", *(extra_paths or [])]
-        self.write_passing_ledger(root, head, paths)
+        self.write_passing_ledger(root, head, include or ["src/"])
         return self.capture.capture(root, "notes/epics/demo.md")
 
     def run_commit(self, root: Path, manifest: Path, *extra: str) -> subprocess.CompletedProcess[str]:
@@ -103,23 +117,75 @@ class ReviewedChangeSetTests(unittest.TestCase):
             capture_output=True,
         )
 
-    def test_capture_records_exact_content_evidence(self) -> None:
+    def run_candidate(self, root: Path, manifest: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                str(COMMIT_SCRIPT),
+                "--candidate",
+                "--ledger",
+                "notes/epics/demo.md",
+                "--reviewed-change-set",
+                manifest.relative_to(root.resolve()).as_posix(),
+            ],
+            cwd=root,
+            text=True,
+            capture_output=True,
+        )
+
+    def test_capture_uses_compact_git_snapshot_and_ignored_ledger_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest_path = self.prepare_review(root)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(manifest["schema_version"], 1)
-        self.assertEqual(manifest["ledger_path"], "notes/epics/demo.md")
-        self.assertEqual({item["path"] for item in manifest["paths"]}, {"src/app.py", "notes/epics/demo.md"})
-        self.assertTrue(all(item["sha256"] for item in manifest["paths"]))
+            self.assertEqual(manifest["schema_version"], 2)
+            self.assertNotIn("paths", manifest)
+            self.assertEqual(manifest["commit_path_count"], 1)
+            self.assertEqual(manifest["scope"]["include"], ["src"])
+            self.assertEqual(manifest["evidence"][0]["role"], "ledger")
+            self.assertEqual(manifest["evidence"][0]["path"], "notes/epics/demo.md")
+            self.assertEqual(
+                git(root, "rev-parse", manifest["review_ref"]).stdout.strip(),
+                manifest["review_commit"],
+            )
+            self.assertEqual(
+                git(root, "rev-parse", f"{manifest['review_commit']}^{{tree}}").stdout.strip(),
+                manifest["review_tree"],
+            )
+            self.assertEqual(git(root, "check-ignore", "notes/epics/demo.md").returncode, 0)
+
+    def test_capture_hashes_ignored_roadmap_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head = self.init_repo(root)
+            (root / "src/app.py").write_text("VALUE = 2\n", encoding="utf-8")
+            roadmap = root / "notes" / "roadmap.md"
+            roadmap.write_text("# Roadmap\n\n## Status\n\nactive\n", encoding="utf-8")
+            self.write_passing_ledger(
+                root,
+                head,
+                ["src/"],
+                evidence={
+                    "ledger": "notes/epics/demo.md",
+                    "roadmap": "notes/roadmap.md",
+                },
+            )
+
+            manifest = json.loads(self.capture.capture(root, "notes/epics/demo.md").read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                {item["role"] for item in manifest["evidence"]},
+                {"ledger", "roadmap"},
+            )
+            self.assertTrue(all(item["sha256"] for item in manifest["evidence"]))
 
     def test_capture_rejects_repository_escape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             head = self.init_repo(root)
             (root / "src/app.py").write_text("VALUE = 2\n", encoding="utf-8")
-            self.write_passing_ledger(root, head, ["src/app.py", "notes/epics/demo.md", "../outside"])
+            self.write_passing_ledger(root, head, ["../outside"])
 
             with self.assertRaisesRegex(ValueError, "escapes repository"):
                 self.capture.capture(root, "notes/epics/demo.md")
@@ -127,7 +193,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
     def test_capture_handles_rename_deletion_symlink_binary_and_spaces(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            head = self.init_repo(root)
+            self.init_repo(root)
             old = root / "src" / "old.txt"
             deleted = root / "src" / "delete.txt"
             old.write_text("old\n", encoding="utf-8")
@@ -139,24 +205,94 @@ class ReviewedChangeSetTests(unittest.TestCase):
             (root / "src/delete.txt").unlink()
             (root / "src/blob.bin").write_bytes(b"\x00\xffdeepdone")
             os.symlink("app.py", root / "src/link.py")
-            self.write_passing_ledger(
-                root,
-                head,
-                ["src/new name.txt", "src/delete.txt", "src/blob.bin", "src/link.py", "notes/epics/demo.md"],
-            )
+            os.chmod(root / "src/app.py", 0o755)
+            self.write_passing_ledger(root, head, ["src/"])
 
             manifest = json.loads(self.capture.capture(root, "notes/epics/demo.md").read_text(encoding="utf-8"))
+            changed = set(
+                git(
+                    root,
+                    "diff",
+                    "--name-only",
+                    "--no-renames",
+                    manifest["base_head"],
+                    manifest["review_commit"],
+                ).stdout.splitlines()
+            )
 
-        by_path = {item["path"]: item for item in manifest["paths"]}
-        self.assertEqual(by_path["src/new name.txt"]["old_path"], "src/old.txt")
-        self.assertEqual(by_path["src/delete.txt"]["kind"], "deleted")
-        self.assertEqual(by_path["src/blob.bin"]["kind"], "file")
-        self.assertEqual(by_path["src/link.py"]["kind"], "symlink")
+            self.assertEqual(
+                changed,
+                {
+                    "src/app.py",
+                    "src/old.txt",
+                    "src/new name.txt",
+                    "src/delete.txt",
+                    "src/blob.bin",
+                    "src/link.py",
+                },
+            )
+            self.assertEqual(manifest["commit_path_count"], len(changed))
 
-    def test_exact_commit_preserves_unrelated_unstaged_work(self) -> None:
+    def test_capture_blocks_rename_crossing_scope_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.init_repo(root)
+            source = root / "src" / "move.txt"
+            source.write_text("move\n", encoding="utf-8")
+            git(root, "add", "src/move.txt")
+            git(root, "commit", "-qm", "add move source")
+            head = git(root, "rev-parse", "HEAD").stdout.strip()
+            destination = root / "other" / "move.txt"
+            destination.parent.mkdir()
+            git(root, "mv", "src/move.txt", "other/move.txt")
+            self.write_passing_ledger(root, head, ["src/"])
+
+            with self.assertRaisesRegex(ValueError, "rename crosses review include boundary"):
+                self.capture.capture(root, "notes/epics/demo.md")
+
+    def test_capture_does_not_change_head_or_real_index(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head = self.init_repo(root)
+            (root / "src/app.py").write_text("VALUE = 2\n", encoding="utf-8")
+            (root / "scratch.txt").write_text("staged user work\n", encoding="utf-8")
+            git(root, "add", "scratch.txt")
+            before_index = git(root, "write-tree").stdout.strip()
+            self.write_passing_ledger(root, head, ["src/"])
+
+            self.capture.capture(root, "notes/epics/demo.md")
+
+            self.assertEqual(git(root, "rev-parse", "HEAD").stdout.strip(), head)
+            self.assertEqual(git(root, "write-tree").stdout.strip(), before_index)
+            self.assertIn("A  scratch.txt", git(root, "status", "--short").stdout)
+
+    def test_manifest_and_candidate_stay_bounded_for_five_thousand_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head = self.init_repo(root)
+            generated = root / "generated"
+            generated.mkdir()
+            for index in range(5000):
+                (generated / f"file-{index:04d}.txt").write_text(f"{index}\n", encoding="utf-8")
+            self.write_passing_ledger(root, head, ["generated/"])
+
+            manifest_path = self.capture.capture(root, "notes/epics/demo.md")
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            candidate = self.run_candidate(root, manifest_path)
+
+            self.assertEqual(manifest["commit_path_count"], 5000)
+            self.assertLess(manifest_path.stat().st_size, 5000)
+            self.assertNotIn("file-4999.txt", manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(candidate.returncode, 0, candidate.stderr)
+            self.assertLess(len(candidate.stdout), 25000)
+            self.assertIn('"reviewed_file_count": 5000', candidate.stdout)
+            self.assertNotIn("file-4999.txt", candidate.stdout)
+
+    def test_exact_commit_preserves_unrelated_work_and_retains_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             manifest = self.prepare_review(root)
+            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
             unrelated = root / "scratch.txt"
             unrelated.write_text("user work\n", encoding="utf-8")
             before = git(root, "rev-parse", "HEAD").stdout.strip()
@@ -164,11 +300,21 @@ class ReviewedChangeSetTests(unittest.TestCase):
             result = self.run_commit(root, manifest)
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            committed = set(git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", f"{before}..HEAD").stdout.splitlines())
-            self.assertEqual(committed, {"src/app.py", "notes/epics/demo.md"})
+            committed = set(
+                git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", f"{before}..HEAD").stdout.splitlines()
+            )
+            self.assertEqual(committed, {"src/app.py"})
             self.assertEqual(unrelated.read_text(encoding="utf-8"), "user work\n")
             self.assertIn("?? scratch.txt", git(root, "status", "--short", "--untracked-files=all").stdout)
-            self.assertFalse(manifest.exists())
+            self.assertTrue(manifest.exists())
+            self.assertEqual(
+                git(root, "rev-parse", manifest_data["review_ref"]).stdout.strip(),
+                manifest_data["review_commit"],
+            )
+            self.assertEqual(
+                git(root, "rev-parse", "HEAD^{tree}").stdout.strip(),
+                manifest_data["review_tree"],
+            )
 
     def test_unrelated_staged_path_blocks_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -184,6 +330,17 @@ class ReviewedChangeSetTests(unittest.TestCase):
             self.assertIn("staged paths exist outside reviewed change set", result.stderr)
             self.assertEqual(git(root, "rev-parse", "HEAD").stdout.strip(), before)
             self.assertTrue(manifest.exists())
+
+    def test_staged_development_evidence_blocks_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = self.prepare_review(root)
+            git(root, "add", "-f", "notes/epics/demo.md")
+
+            result = self.run_commit(root, manifest)
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("staged paths exist outside reviewed change set", result.stderr)
 
     def test_actual_commit_requires_explicit_manifest_argument(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -218,7 +375,21 @@ class ReviewedChangeSetTests(unittest.TestCase):
             result = self.run_commit(root, manifest)
 
             self.assertEqual(result.returncode, 2)
-            self.assertIn("reviewed paths changed after review", result.stderr)
+            self.assertIn("reviewed Git snapshot changed after review", result.stderr)
+
+    def test_changed_development_evidence_blocks_commit_and_advance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = self.prepare_review(root)
+            ledger = root / "notes/epics/demo.md"
+            ledger.write_text(ledger.read_text(encoding="utf-8") + "\nchanged\n", encoding="utf-8")
+
+            result = self.run_commit(root, manifest)
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("development evidence changed after review", result.stderr)
+            with self.assertRaisesRegex(ValueError, "development evidence changed after review"):
+                self.advance.check(root, "notes/epics/demo.md")
 
     def test_base_head_change_blocks_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -257,12 +428,53 @@ class ReviewedChangeSetTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("ledger does not match", result.stderr)
 
+    def test_missing_schema_v2_manifest_blocks_clean_advance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = self.prepare_review(root)
+            result = self.run_commit(root, manifest)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest.unlink()
+
+            with self.assertRaisesRegex(ValueError, "schema-v2 review manifest is missing"):
+                self.advance.check(root, "notes/epics/demo.md")
+
+    def test_existing_ref_requires_manifest_commit_ownership(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head = self.init_repo(root)
+            review_id = "20260711T120000Z-a1b2c3d4"
+            ref = f"refs/deepdone/reviews/{review_id}"
+            git(root, "update-ref", ref, head)
+            manifest = root / ".deepdone/reviews" / f"{review_id}.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "schema_version": 2,
+                        "ledger_path": "notes/epics/demo.md",
+                        "review_ref": ref,
+                        "review_commit": "0" * len(head),
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertFalse(
+                self.capture.prior_manifest_owns_ref(
+                    manifest,
+                    "notes/epics/demo.md",
+                    ref,
+                    head,
+                )
+            )
+
     def test_dangerous_reviewed_path_blocks_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             head = self.init_repo(root)
             (root / "secret.pem").write_text("not-a-real-secret\n", encoding="utf-8")
-            self.write_passing_ledger(root, head, ["secret.pem", "notes/epics/demo.md"])
+            self.write_passing_ledger(root, head, ["secret.pem"])
             manifest = self.capture.capture(root, "notes/epics/demo.md")
 
             result = self.run_commit(root, manifest)
@@ -270,7 +482,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("dangerous paths", result.stderr)
 
-    def test_rename_commit_matches_effective_reviewed_paths(self) -> None:
+    def test_rename_commit_matches_git_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.init_repo(root)
@@ -280,47 +492,128 @@ class ReviewedChangeSetTests(unittest.TestCase):
             git(root, "commit", "-qm", "add rename source")
             base = git(root, "rev-parse", "HEAD").stdout.strip()
             git(root, "mv", "src/old.txt", "src/new name.txt")
-            self.write_passing_ledger(root, base, ["src/new name.txt", "notes/epics/demo.md"])
-            manifest = self.capture.capture(root, "notes/epics/demo.md")
-
-            result = self.run_commit(root, manifest)
-
-            self.assertEqual(result.returncode, 0, result.stderr)
-            committed = set(
-                git(root, "diff", "--name-only", "--no-renames", f"{base}..HEAD").stdout.splitlines()
-            )
-            self.assertEqual(committed, {"src/old.txt", "src/new name.txt", "notes/epics/demo.md"})
-
-    def test_untracked_file_with_spaces_commits_when_reviewed(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            base = self.init_repo(root)
-            new_file = root / "src/new [file]*.bin"
-            new_file.write_bytes(b"\x00\xffreviewed")
-            self.write_passing_ledger(root, base, ["src/new [file]*.bin", "notes/epics/demo.md"])
+            self.write_passing_ledger(root, base, ["src/"])
             manifest = self.capture.capture(root, "notes/epics/demo.md")
 
             result = self.run_commit(root, manifest)
 
             self.assertEqual(result.returncode, 0, result.stderr)
             committed = set(git(root, "diff", "--name-only", "--no-renames", f"{base}..HEAD").stdout.splitlines())
-            self.assertEqual(committed, {"src/new [file]*.bin", "notes/epics/demo.md"})
+            self.assertEqual(committed, {"src/old.txt", "src/new name.txt"})
 
-    def test_advance_blocks_dirty_reviewed_set_and_allows_clean_commit(self) -> None:
+    def test_untracked_file_with_pathspec_characters_commits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self.prepare_review(root)
+            base = self.init_repo(root)
+            new_file = root / "src/new [file]*.bin"
+            new_file.write_bytes(b"\x00\xffreviewed")
+            self.write_passing_ledger(root, base, ["src/"])
+            manifest = self.capture.capture(root, "notes/epics/demo.md")
+
+            result = self.run_commit(root, manifest)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            committed = set(git(root, "diff", "--name-only", "--no-renames", f"{base}..HEAD").stdout.splitlines())
+            self.assertEqual(committed, {"src/new [file]*.bin"})
+
+    def test_advance_blocks_dirty_snapshot_then_cleans_up_after_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = self.prepare_review(root)
+            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
 
             dirty, reviewed = self.advance.check(root, "notes/epics/demo.md")
-            self.assertEqual(set(dirty), {"src/app.py", "notes/epics/demo.md"})
-            self.assertEqual(set(reviewed), {"src/app.py", "notes/epics/demo.md"})
+            self.assertEqual(dirty, ["src/app.py"])
+            self.assertEqual(reviewed, ["src/app.py"])
 
-            git(root, "add", "src/app.py", "notes/epics/demo.md")
-            git(root, "commit", "-qm", "manual reviewed commit")
-            dirty, _ = self.advance.check(root, "notes/epics/demo.md")
-            self.assertEqual(dirty, [])
+            result = self.run_commit(root, manifest)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            dirty, reviewed = self.advance.check(root, "notes/epics/demo.md")
+            self.assertEqual((dirty, reviewed), ([], ["src/app.py"]))
 
-    def test_legacy_review_blocks_advance_only_while_dirty(self) -> None:
+            removed_manifest, removed_ref = self.advance.cleanup(root, "notes/epics/demo.md")
+            self.assertEqual(removed_manifest, manifest)
+            self.assertEqual(removed_ref, manifest_data["review_ref"])
+            self.assertFalse(manifest.exists())
+            self.assertNotEqual(git(root, "rev-parse", "--verify", removed_ref, check=False).returncode, 0)
+
+    def test_cleanup_allows_roadmap_change_written_by_advance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head = self.init_repo(root)
+            (root / "src/app.py").write_text("VALUE = 2\n", encoding="utf-8")
+            roadmap = root / "notes" / "roadmap.md"
+            roadmap.write_text("# Roadmap\n\n## Status\n\nactive\n", encoding="utf-8")
+            self.write_passing_ledger(
+                root,
+                head,
+                ["src/"],
+                evidence={
+                    "ledger": "notes/epics/demo.md",
+                    "roadmap": "notes/roadmap.md",
+                },
+            )
+            manifest = self.capture.capture(root, "notes/epics/demo.md")
+            result = self.run_commit(root, manifest)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            roadmap.write_text("# Roadmap\n\n## Status\n\ncomplete\n", encoding="utf-8")
+            removed_manifest, _ = self.advance.cleanup(root, "notes/epics/demo.md")
+
+            self.assertEqual(removed_manifest, manifest)
+            self.assertFalse(manifest.exists())
+
+    def test_cleanup_cli_requires_roadmap_to_advance_first(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head = self.init_repo(root)
+            (root / "src/app.py").write_text("VALUE = 2\n", encoding="utf-8")
+            roadmap = root / "notes" / "roadmap.md"
+            roadmap.write_text(
+                "# Roadmap\n\n## Active Epic\n\n"
+                "- name: Demo\n"
+                "- ledger: notes/epics/demo.md\n"
+                "- state: complete-pending-advance\n\n"
+                "## Status\n\nactive\n",
+                encoding="utf-8",
+            )
+            self.write_passing_ledger(
+                root,
+                head,
+                ["src/"],
+                evidence={
+                    "ledger": "notes/epics/demo.md",
+                    "roadmap": "notes/roadmap.md",
+                },
+            )
+            manifest = self.capture.capture(root, "notes/epics/demo.md")
+            result = self.run_commit(root, manifest)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            command = [
+                sys.executable,
+                str(ADVANCE_SCRIPT),
+                "--ledger",
+                "notes/epics/demo.md",
+                "--cleanup-after-advance",
+            ]
+
+            before = subprocess.run(command, cwd=root, text=True, capture_output=True)
+            self.assertEqual(before.returncode, 2)
+            self.assertIn("roadmap has not advanced", before.stderr)
+
+            roadmap.write_text(
+                "# Roadmap\n\n## Active Epic\n\n"
+                "- name: Next\n"
+                "- ledger: notes/epics/next.md\n"
+                "- state: active\n\n"
+                "## Status\n\nactive\n",
+                encoding="utf-8",
+            )
+            after = subprocess.run(command, cwd=root, text=True, capture_output=True)
+            self.assertEqual(after.returncode, 0, after.stderr)
+            self.assertFalse(manifest.exists())
+
+    def test_legacy_review_blocks_advance_only_while_repository_dirty(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.init_repo(root)
@@ -329,13 +622,39 @@ class ReviewedChangeSetTests(unittest.TestCase):
                 "# Demo\n\n## Review\n\n- reviewed-at: now\n  result: pass\n  notes: legacy\n\n## Status\n\ncomplete\n",
                 encoding="utf-8",
             )
+            (root / "src/app.py").write_text("VALUE = 2\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "legacy passing review"):
                 self.advance.check(root, "notes/epics/demo.md")
 
-            git(root, "add", "notes/epics/demo.md")
+            git(root, "add", "src/app.py")
             git(root, "commit", "-qm", "legacy reviewed work")
             dirty, reviewed = self.advance.check(root, "notes/epics/demo.md")
             self.assertEqual((dirty, reviewed), ([], []))
+
+    def test_failed_capture_removes_partial_ref_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head = self.init_repo(root)
+            (root / "src/app.py").write_text("VALUE = 2\n", encoding="utf-8")
+            review_id = "20260711T120000Z-a1b2c3d4"
+            self.write_passing_ledger(
+                root,
+                head,
+                ["src/"],
+                review_id=review_id,
+                evidence={
+                    "ledger": "notes/epics/demo.md",
+                    "roadmap": "notes/roadmap.md",
+                },
+            )
+
+            with self.assertRaisesRegex(ValueError, "roadmap evidence"):
+                self.capture.capture(root, "notes/epics/demo.md")
+
+            manifest = root / ".deepdone/reviews" / f"{review_id}.json"
+            ref = f"refs/deepdone/reviews/{review_id}"
+            self.assertFalse(manifest.exists())
+            self.assertNotEqual(git(root, "rev-parse", "--verify", ref, check=False).returncode, 0)
 
 
 if __name__ == "__main__":
