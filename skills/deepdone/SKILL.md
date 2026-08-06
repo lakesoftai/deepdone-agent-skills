@@ -1,7 +1,10 @@
 ---
 name: deepdone
-slug: deepdone
 description: Run DeepDone as one bounded software workflow from requirements intake through planning, implementation, verification, review, local commit, and explicit post-commit actions. Use when the user provides requirements, asks to continue existing DeepDone work, or requests a bounded automation mode.
+license: Apache-2.0
+compatibility: Requires Git, Python 3.10+, a writable Git worktree, and command execution.
+metadata:
+  author: lakesoftai
 ---
 
 # DeepDone

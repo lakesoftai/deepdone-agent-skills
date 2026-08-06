@@ -1,0 +1,25 @@
+{
+  "name": "deepdone",
+  "version": "2.1.0",
+  "description": "End-to-end development with your coding agent.",
+  "author": {
+    "name": "lakesoftai"
+  },
+  "interface": {
+    "displayName": "DeepDone",
+    "shortDescription": "End-to-end development with your coding agent",
+    "longDescription": "Turn requirements into planned, implemented, verified, and reviewed local work with explicit safety gates.",
+    "developerName": "lakesoftai",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://deepdone.ai/",
+    "defaultPrompt": [
+      "Use $deepdone to implement these requirements end to end.",
+      "Use $deepdone to inspect this repository and choose the next safe step.",
+      "Use $deepdone to verify and review the current work."
+    ]
+  }
+}

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -11,6 +12,31 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+PLUGIN_SCHEMA_URI = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+PLUGIN_VERSION = "2.1.0"
+PLUGIN_DESCRIPTION = "End-to-end development with your coding agent."
+PLUGIN_AUTHOR = {"name": "lakesoftai"}
+PLUGIN_ALLOWED_FIELDS = {
+    "$schema",
+    "name",
+    "version",
+    "description",
+    "author",
+    "homepage",
+    "repository",
+    "license",
+    "keywords",
+    "extensions",
+}
+SKILL_ALLOWED_FRONTMATTER_FIELDS = {
+    "name",
+    "description",
+    "license",
+    "compatibility",
+    "metadata",
+    "allowed-tools",
+}
 
 PUBLIC_SKILLS = ["deepdone"]
 PHASES = {
@@ -75,6 +101,8 @@ def frontmatter(text: str) -> dict[str, str]:
         return {}
     data: dict[str, str] = {}
     for line in match.group(1).splitlines():
+        if not line or line[0].isspace():
+            continue
         if ":" not in line:
             continue
         key, value = line.split(":", 1)
@@ -97,13 +125,35 @@ def check_skill_metadata(errors: list[str]) -> None:
             continue
 
         meta = frontmatter(text)
-        for field in ("name", "slug", "description"):
+        unknown_fields = set(meta).difference(SKILL_ALLOWED_FRONTMATTER_FIELDS)
+        if unknown_fields:
+            errors.append(f"{skill}: unsupported frontmatter fields: {sorted(unknown_fields)}")
+        for field in ("name", "description", "license", "compatibility", "metadata"):
+            if field == "metadata":
+                if field not in meta:
+                    errors.append(f"{skill}: missing frontmatter field {field}")
+                continue
             if not meta.get(field):
                 errors.append(f"{skill}: missing frontmatter field {field}")
         if meta.get("name") and meta["name"] != skill:
             errors.append(f"{skill}: name does not match directory name")
-        if meta.get("slug") and meta["slug"] != skill:
-            errors.append(f"{skill}: slug does not match directory name")
+        if meta.get("license") and meta["license"] != "Apache-2.0":
+            errors.append(f"{skill}: license must be Apache-2.0")
+        if len(meta.get("description", "")) > 1024:
+            errors.append(f"{skill}: description exceeds 1024 characters")
+        if len(meta.get("compatibility", "")) > 500:
+            errors.append(f"{skill}: compatibility exceeds 500 characters")
+        metadata_match = re.search(
+            r"^metadata:\s*$\n(?P<body>(?:^[ \t]+.*(?:\n|$))+)",
+            text,
+            flags=re.MULTILINE,
+        )
+        if not metadata_match or not re.search(
+            r"^\s+author:\s+lakesoftai\s*$",
+            metadata_match.group("body"),
+            flags=re.MULTILINE,
+        ):
+            errors.append(f"{skill}: metadata.author must be lakesoftai")
 
         agent_manifest = skill_dir / "agents" / "openai.yaml"
         manifest = read_text(agent_manifest)
@@ -124,6 +174,150 @@ def check_skill_metadata(errors: list[str]) -> None:
                 expected_policy = skill in IMPLICIT_ENTRY_SKILLS
                 if actual != expected_policy:
                     errors.append(f"{skill}: allow_implicit_invocation must be {str(expected_policy).lower()}")
+
+
+def read_json_object(path: Path, errors: list[str]) -> dict[str, object]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        errors.append(f"missing {path.relative_to(ROOT)}")
+        return {}
+    except json.JSONDecodeError as exc:
+        errors.append(f"{path.relative_to(ROOT)}: invalid JSON: {exc}")
+        return {}
+    if not isinstance(value, dict):
+        errors.append(f"{path.relative_to(ROOT)}: root must be a JSON object")
+        return {}
+    return value
+
+
+def package_path_is_contained(path: Path, root: Path) -> bool:
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return False
+    return resolved.is_relative_to(root.resolve())
+
+
+def check_plugin_package(errors: list[str]) -> None:
+    manifest = read_json_object(ROOT / "plugin.json", errors)
+    if manifest:
+        unknown = set(manifest).difference(PLUGIN_ALLOWED_FIELDS)
+        if unknown:
+            errors.append(f"plugin.json: unsupported fields: {sorted(unknown)}")
+        for field in ("$schema", "name"):
+            if not manifest.get(field):
+                errors.append(f"plugin.json: missing required field {field}")
+        if manifest.get("$schema") != PLUGIN_SCHEMA_URI:
+            errors.append("plugin.json: unsupported Agent Plugins schema")
+        name = manifest.get("name")
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", name):
+            errors.append("plugin.json: invalid plugin name")
+        elif "--" in name or ".." in name or len(name) > 64:
+            errors.append("plugin.json: invalid plugin name")
+        if manifest.get("description") != PLUGIN_DESCRIPTION:
+            errors.append("plugin.json: canonical description mismatch")
+        if manifest.get("version") != PLUGIN_VERSION:
+            errors.append(f"plugin.json: version must be {PLUGIN_VERSION}")
+        if manifest.get("author") != PLUGIN_AUTHOR:
+            errors.append("plugin.json: author mismatch")
+        if manifest.get("license") != "Apache-2.0":
+            errors.append("plugin.json: license must be Apache-2.0")
+        if manifest.get("homepage") != "https://deepdone.ai/":
+            errors.append("plugin.json: homepage mismatch")
+        if manifest.get("repository") != "https://github.com/lakesoftai/deepdone-agent-skills":
+            errors.append("plugin.json: repository mismatch")
+        extensions = manifest.get("extensions")
+        if extensions is not None and not isinstance(extensions, dict):
+            errors.append("plugin.json: extensions must be an object")
+
+    skills_dir = ROOT / "skills"
+    discovered = {
+        path.parent.name
+        for path in skills_dir.glob("*/SKILL.md")
+        if path.is_file()
+    }
+    if discovered != set(PUBLIC_SKILLS):
+        errors.append(f"plugin.json: fixed skill discovery mismatch: {sorted(discovered)}")
+    if (ROOT / "mcp.json").exists():
+        errors.append("mcp.json: DeepDone must remain a skills-only plugin")
+
+    overlay = read_json_object(ROOT / ".codex-plugin" / "plugin.json", errors)
+    if overlay:
+        allowed_overlay = {"name", "version", "description", "author", "interface"}
+        unknown = set(overlay).difference(allowed_overlay)
+        if unknown:
+            errors.append(f".codex-plugin/plugin.json: unsupported overlay fields: {sorted(unknown)}")
+        if overlay.get("name") != manifest.get("name"):
+            errors.append(".codex-plugin/plugin.json: name must match plugin.json")
+        if overlay.get("description") != manifest.get("description"):
+            errors.append(".codex-plugin/plugin.json: description must match plugin.json")
+        if overlay.get("version") != manifest.get("version"):
+            errors.append(".codex-plugin/plugin.json: version must match plugin.json")
+        if overlay.get("author") != manifest.get("author"):
+            errors.append(".codex-plugin/plugin.json: author must match plugin.json")
+        interface = overlay.get("interface")
+        if not isinstance(interface, dict):
+            errors.append(".codex-plugin/plugin.json: interface must be an object")
+        else:
+            required = {
+                "displayName",
+                "shortDescription",
+                "longDescription",
+                "category",
+                "capabilities",
+                "websiteURL",
+                "defaultPrompt",
+            }
+            missing = required.difference(interface)
+            if missing:
+                errors.append(f".codex-plugin/plugin.json: missing interface fields: {sorted(missing)}")
+            if interface.get("displayName") != "DeepDone":
+                errors.append(".codex-plugin/plugin.json: displayName mismatch")
+            if interface.get("developerName") != "lakesoftai":
+                errors.append(".codex-plugin/plugin.json: developerName mismatch")
+            if interface.get("websiteURL") != manifest.get("homepage"):
+                errors.append(".codex-plugin/plugin.json: websiteURL must match plugin homepage")
+            prompts = interface.get("defaultPrompt")
+            if not isinstance(prompts, list) or not 1 <= len(prompts) <= 3:
+                errors.append(".codex-plugin/plugin.json: defaultPrompt must contain 1 to 3 entries")
+            elif any(not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 128 for prompt in prompts):
+                errors.append(".codex-plugin/plugin.json: defaultPrompt entries must be non-empty and at most 128 characters")
+
+    marketplace = read_json_object(ROOT / ".agents" / "plugins" / "marketplace.json", errors)
+    if marketplace:
+        if marketplace.get("name") != "deepdone":
+            errors.append(".agents/plugins/marketplace.json: marketplace name mismatch")
+        plugins = marketplace.get("plugins")
+        if not isinstance(plugins, list) or len(plugins) != 1 or not isinstance(plugins[0], dict):
+            errors.append(".agents/plugins/marketplace.json: expected one plugin entry")
+        else:
+            entry = plugins[0]
+            if entry.get("name") != manifest.get("name"):
+                errors.append(".agents/plugins/marketplace.json: plugin name mismatch")
+            source = entry.get("source")
+            if source != {"source": "local", "path": "."}:
+                errors.append(".agents/plugins/marketplace.json: local source must point at repository root")
+            policy = entry.get("policy")
+            if policy != {"installation": "AVAILABLE", "authentication": "ON_INSTALL"}:
+                errors.append(".agents/plugins/marketplace.json: policy mismatch")
+            if not entry.get("category"):
+                errors.append(".agents/plugins/marketplace.json: missing category")
+
+    root = ROOT.resolve()
+    package_roots = (ROOT / "plugin.json", ROOT / "skills", ROOT / ".codex-plugin", ROOT / ".agents" / "plugins")
+    for package_root in package_roots:
+        if not package_root.exists() and not package_root.is_symlink():
+            continue
+        if not package_path_is_contained(package_root, root):
+            errors.append(f"plugin package path escapes repository root: {package_root.relative_to(ROOT)}")
+            continue
+        paths: list[Path] = []
+        if package_root.is_dir():
+            paths.extend(package_root.rglob("*"))
+        for path in paths:
+            if not package_path_is_contained(path, root):
+                errors.append(f"plugin package path escapes repository root: {path.relative_to(ROOT)}")
 
 
 def check_phase_modules(errors: list[str]) -> None:
@@ -375,6 +569,7 @@ def run_unit_tests(errors: list[str]) -> None:
 def main() -> int:
     errors: list[str] = []
     check_skill_metadata(errors)
+    check_plugin_package(errors)
     check_phase_modules(errors)
     check_skill_references(errors)
     check_orchestrator_budget(errors)
@@ -393,6 +588,7 @@ def main() -> int:
 
     print("DeepDone doctor: pass")
     print(f"- public skills checked: {len(PUBLIC_SKILLS)}")
+    print("- plugin package: pass")
     print(f"- internal phases checked: {len(PHASES)}")
     print(f"- helper scripts checked: {len(HELPER_SCRIPTS)}")
     print(f"- invariants checked: {len(REQUIRED_INVARIANT_IDS)}")

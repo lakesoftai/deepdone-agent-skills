@@ -10,6 +10,16 @@ Agent-driven workflow management for software projects. One public skill exposes
 
 Internal phases are plan, sync, advance, decide, implement, verify, review, fixup, commit, PR, and archive. They live as one-level reference modules under `deepdone`; they are not selector-visible skills.
 
+## Plugin Package
+
+- Root `plugin.json` is portable Agent Plugins v1 metadata and source of truth for plugin identity.
+- `skills/deepdone` is discovered from the standard fixed `skills/` location.
+- `.codex-plugin/plugin.json` contains Codex presentation metadata only. Keep duplicated identity text aligned with root manifest.
+- `.agents/plugins/marketplace.json` exposes repository root with local source path `.` for Codex testing.
+- Package remains skills-only. Do not add MCP, hooks, apps, or external services without explicit scope.
+- Agent Skills frontmatter may use only standard fields. Do not restore non-standard `slug`.
+- Run `python3 scripts/doctor.py` after any package metadata change.
+
 ## Workflow
 
 ```text

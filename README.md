@@ -6,6 +6,20 @@ It keeps long work recoverable through one roadmap, one active epic ledger, and 
 
 ## Installation
 
+### Agent plugin
+
+Repository root is a portable [Agent Plugins v1](https://agent-plugins.org/) package. It exposes the existing `skills/deepdone` workflow through root `plugin.json` and includes a transitional Codex presentation overlay.
+
+For local Codex testing, add repository as a marketplace source:
+
+```bash
+codex plugin marketplace add .
+```
+
+Then open `/plugins`, install `deepdone`, and start a new task. Plugin is skills-only. It does not add MCP servers, hooks, apps, or external services.
+
+### Standalone skill
+
 Install DeepDone with the skills CLI:
 
 ```bash
@@ -135,7 +149,7 @@ Run:
 python3 scripts/doctor.py
 ```
 
-Doctor checks exactly one public skill, eleven internal phases, skill metadata, the OpenAI manifest, invariant conformance, reviewed change-set schema compatibility, helper scripts, examples, logging removal, and unit tests.
+Doctor checks portable and Codex plugin metadata, marketplace wiring, exactly one public skill, eleven internal phases, Agent Skills frontmatter, invariant conformance, reviewed change-set schema compatibility, helper scripts, examples, logging removal, and unit tests.
 
 ## Manual Cross-Agent Evaluation
 

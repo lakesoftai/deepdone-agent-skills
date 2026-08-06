@@ -1,0 +1,20 @@
+{
+  "name": "deepdone",
+  "interface": {
+    "displayName": "DeepDone"
+  },
+  "plugins": [
+    {
+      "name": "deepdone",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
