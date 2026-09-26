@@ -15,6 +15,7 @@ Internal phases are plan, sync, advance, decide, implement, verify, review, fixu
 - Root `plugin.json` is portable Agent Plugins v1 metadata and source of truth for plugin identity.
 - `skills/deepdone` is discovered from the standard fixed `skills/` location.
 - `.codex-plugin/plugin.json` contains Codex presentation metadata only. Keep duplicated identity text aligned with root manifest.
+- `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` expose the same skill for Claude Code. Keep identity aligned with root manifest and marketplace source at `./`.
 - `.agents/plugins/marketplace.json` exposes repository root with local source path `.` for Codex testing.
 - Package remains skills-only. Do not add MCP, hooks, apps, or external services without explicit scope.
 - Agent Skills frontmatter may use only standard fields. Do not restore non-standard `slug`.

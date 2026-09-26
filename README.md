@@ -6,17 +6,39 @@ It keeps long work recoverable through one roadmap, one active epic ledger, and 
 
 ## Installation
 
-### Agent plugin
+Choose either the plugin or standalone skill for your agent. Both contain the same workflow; do not install both copies. DeepDone requires Git, Python 3.10+, command execution, and a writable Git worktree.
 
-Repository root is a portable [Agent Plugins v1](https://agent-plugins.org/) package. It exposes the existing `skills/deepdone` workflow through root `plugin.json` and includes a transitional Codex presentation overlay.
+### Codex plugin
 
-For local Codex testing, add repository as a marketplace source:
+With the Codex CLI installed, run in your terminal:
 
 ```bash
-codex plugin marketplace add .
+codex plugin marketplace add lakesoftai/deepdone-agent-skills
+codex plugin add deepdone@deepdone
 ```
 
-Then open `/plugins`, install `deepdone`, and start a new task. Plugin is skills-only. It does not add MCP servers, hooks, apps, or external services.
+Check `codex plugin list --marketplace deepdone`, then start a new Codex chat in your project. Invoke `$deepdone` or paste:
+
+```text
+Use $deepdone to plan and implement end to end the following requirements:
+```
+
+### Claude Code plugin
+
+With Claude Code installed, run in your terminal:
+
+```bash
+claude plugin marketplace add lakesoftai/deepdone-agent-skills
+claude plugin install deepdone@deepdone
+```
+
+Check `claude plugin list`, then start a new Claude Code session in your project. Plugin skills use a namespace, so invoke `/deepdone:deepdone`:
+
+```text
+/deepdone:deepdone Plan and implement end to end the following requirements:
+```
+
+Repository root is a portable [Agent Plugins v1](https://agent-plugins.org/) package with Codex and Claude Code manifests. Both marketplaces expose `skills/deepdone`. The plugin adds no MCP servers, hooks, apps, or external services. For local packaging tests, substitute `.` for the GitHub repository in either marketplace command.
 
 ### Standalone skill
 
@@ -36,7 +58,10 @@ Use `-a` to install for a specific agent :
 
 ```bash
 npx skills add lakesoftai/deepdone-agent-skills --skill deepdone -a codex
+npx skills add lakesoftai/deepdone-agent-skills --skill deepdone -a claude-code
 ```
+
+Run only the command for your agent, from your project directory. Add `-g` for all projects. Start a new session and select `$deepdone` in Codex or `/deepdone` in Claude Code. The standalone Claude command has no plugin namespace. Confirm the skill appears in your agent's skill selector before starting work.
 
 ### Upgrade from an older DeepDone package
 
@@ -149,7 +174,7 @@ Run:
 python3 scripts/doctor.py
 ```
 
-Doctor checks portable and Codex plugin metadata, marketplace wiring, exactly one public skill, eleven internal phases, Agent Skills frontmatter, invariant conformance, reviewed change-set schema compatibility, helper scripts, examples, logging removal, and unit tests.
+Doctor checks portable, Codex, and Claude Code plugin metadata, marketplace wiring, exactly one public skill, eleven internal phases, Agent Skills frontmatter, invariant conformance, reviewed change-set schema compatibility, helper scripts, examples, logging removal, and unit tests. Claude's native package validator is `claude plugin validate .`.
 
 ## Manual Cross-Agent Evaluation
 

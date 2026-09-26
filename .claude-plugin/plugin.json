@@ -1,5 +1,4 @@
 {
-  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "deepdone",
   "version": "2.1.1",
   "description": "End-to-end development with your coding agent.",
@@ -8,13 +7,5 @@
   },
   "homepage": "https://deepdone.ai/",
   "repository": "https://github.com/lakesoftai/deepdone-agent-skills",
-  "license": "Apache-2.0",
-  "keywords": [
-    "software-development",
-    "coding-agent",
-    "workflow",
-    "git",
-    "verification",
-    "code-review"
-  ]
+  "license": "Apache-2.0"
 }

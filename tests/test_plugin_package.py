@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_URI = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 DESCRIPTION = "End-to-end development with your coding agent."
 AUTHOR = {"name": "lakesoftai"}
 ALLOWED_PLUGIN_FIELDS = {
@@ -147,12 +147,29 @@ class PluginPackageTests(unittest.TestCase):
             {"installation": "AVAILABLE", "authentication": "ON_INSTALL"},
         )
 
+    def test_claude_package_exposes_same_skill_from_repo_root(self) -> None:
+        manifest = load_json("plugin.json")
+        claude_manifest = load_json(".claude-plugin/plugin.json")
+        self.assertEqual(claude_manifest, {
+            field: manifest[field]
+            for field in ("name", "version", "description", "author", "homepage", "repository", "license")
+        })
+        marketplace = load_json(".claude-plugin/marketplace.json")
+        self.assertEqual(marketplace["name"], "deepdone")
+        self.assertEqual(marketplace["owner"], AUTHOR)
+        self.assertEqual(marketplace["plugins"], [{
+            "name": "deepdone", "source": "./", "description": DESCRIPTION,
+        }])
+        plugin_root = ROOT / marketplace["plugins"][0]["source"]
+        self.assertTrue((plugin_root / "skills/deepdone/SKILL.md").is_file())
+
     def test_plugin_package_paths_stay_inside_root(self) -> None:
         root = ROOT.resolve()
         package_paths = [
             ROOT / "plugin.json",
             ROOT / "skills",
             ROOT / ".codex-plugin",
+            ROOT / ".claude-plugin",
             ROOT / ".agents/plugins",
         ]
 

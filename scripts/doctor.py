@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 PLUGIN_SCHEMA_URI = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
-PLUGIN_VERSION = "2.1.0"
+PLUGIN_VERSION = "2.1.1"
 PLUGIN_DESCRIPTION = "End-to-end development with your coding agent."
 PLUGIN_AUTHOR = {"name": "lakesoftai"}
 PLUGIN_ALLOWED_FIELDS = {
@@ -304,8 +304,25 @@ def check_plugin_package(errors: list[str]) -> None:
             if not entry.get("category"):
                 errors.append(".agents/plugins/marketplace.json: missing category")
 
+    claude_manifest = read_json_object(ROOT / ".claude-plugin" / "plugin.json", errors)
+    for field in ("name", "version", "description", "author", "homepage", "repository", "license"):
+        if claude_manifest.get(field) != manifest.get(field):
+            errors.append(f".claude-plugin/plugin.json: {field} must match plugin.json")
+
+    claude_marketplace = read_json_object(ROOT / ".claude-plugin" / "marketplace.json", errors)
+    if claude_marketplace.get("name") != manifest.get("name"):
+        errors.append(".claude-plugin/marketplace.json: marketplace name mismatch")
+    if claude_marketplace.get("owner") != manifest.get("author"):
+        errors.append(".claude-plugin/marketplace.json: owner mismatch")
+    if claude_marketplace.get("plugins") != [{
+        "name": manifest.get("name"),
+        "source": "./",
+        "description": manifest.get("description"),
+    }]:
+        errors.append(".claude-plugin/marketplace.json: expected one plugin at repository root")
+
     root = ROOT.resolve()
-    package_roots = (ROOT / "plugin.json", ROOT / "skills", ROOT / ".codex-plugin", ROOT / ".agents" / "plugins")
+    package_roots = (ROOT / "plugin.json", ROOT / "skills", ROOT / ".codex-plugin", ROOT / ".claude-plugin", ROOT / ".agents" / "plugins")
     for package_root in package_roots:
         if not package_root.exists() and not package_root.is_symlink():
             continue

@@ -1,0 +1,14 @@
+{
+  "name": "deepdone",
+  "description": "DeepDone workflow for planning, implementation, verification, and review.",
+  "owner": {
+    "name": "lakesoftai"
+  },
+  "plugins": [
+    {
+      "name": "deepdone",
+      "source": "./",
+      "description": "End-to-end development with your coding agent."
+    }
+  ]
+}
