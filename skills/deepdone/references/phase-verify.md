@@ -80,6 +80,15 @@ failure or blocker; unrelated successes do not. Keep earlier entries intact.
 Missing results, duplicate fields, empty values, and malformed records block
 readiness. Candidate and commit-message excerpts show only the last three entries.
 
+The supported grammar is flat: start each record at column zero with
+`- command: <value>`, then indent each `key: <value>` field by exactly two spaces.
+Keys use lowercase letters, digits, underscores, or hyphens, starting with a
+letter, with no whitespace before the colon. Values must be nonempty and stay on
+one line. Nested fields, continuation lines, and block scalars (`|`, `>`, including
+their modifiers) are unsupported and block readiness. Single-line notes can
+contain text such as `result: fail`; that text is never parsed as another field.
+Validation preserves indentation; only display formatting may normalize it.
+
 This legacy format does not prove source freshness or enumerate all required
 checks. Confirm applicability before reusing results. All entries are readiness
 evidence: an expected failing reproduction is diagnostic evidence, not a readiness

@@ -210,15 +210,19 @@ def seed_active(root: Path, *, roadmap: bool = False) -> dict[str, object]:
 
 def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
     errors: list[str] = []
-    ledger = read_or_empty(root / "notes/epics/current.md")
-    # Execute grader-owned expectations in a fresh process, not agent-owned tests.
+    try:
+        ledger = read_or_empty(root / "notes/epics/current.md")
+    except (OSError, UnicodeError) as exc:
+        return [f"ledger evidence could not be read: {type(exc).__name__}: {exc}"]
+    # Load src.calc as a package module from the fixture's explicit import root.
     check = (
-        "import runpy\n"
-        "calc = runpy.run_path('src/calc.py')\n"
+        "import os, sys\n"
+        "sys.path.insert(0, os.getcwd())\n"
+        "from src import calc\n"
         "for a, b, difference, total in [(7, 2, 5, 9), (2, 7, -5, 9), "
         "(-3, -5, 2, -8), (0, 0, 0, 0), (1.5, 0.5, 1.0, 2.0)]:\n"
-        "    assert calc['subtract'](a, b) == difference, ('subtract', a, b)\n"
-        "    assert calc['add'](a, b) == total, ('add', a, b)\n"
+        "    assert calc.subtract(a, b) == difference, ('subtract', a, b)\n"
+        "    assert calc.add(a, b) == total, ('add', a, b)\n"
     )
     try:
         result = run([sys.executable, "-I", "-B", "-c", check], root, timeout=10)

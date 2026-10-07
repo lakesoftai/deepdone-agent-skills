@@ -141,14 +141,14 @@ def read_text(path: Path) -> str:
         return ""
 
 
-def section(text: str, name: str) -> str:
-    match = re.search(rf"^##\s+{re.escape(name)}\s*$", text, flags=re.MULTILINE)
+def section(text: str, name: str, *, preserve_indent: bool = False) -> str:
+    match = re.search(rf"^##[ \t]+{re.escape(name)}[ \t]*$", text, flags=re.MULTILINE)
     if not match:
         return ""
     start = match.end()
     next_match = re.search(r"^##\s+", text[start:], flags=re.MULTILINE)
     end = start + next_match.start() if next_match else len(text)
-    return text[start:end].strip()
+    return text[start:end].strip("\r\n") if preserve_indent else text[start:end].strip()
 
 
 def status_is_active(status_text: str) -> bool:
@@ -260,8 +260,8 @@ def latest_lines(text: str, section_name: str, limit: int = 8) -> list[str]:
 def latest_verification_lines(text: str, limit: int | None = None) -> list[str]:
     entries: list[list[str]] = []
     current: list[str] = []
-    for raw_line in section(text, "Verification Log").splitlines():
-        line = raw_line.strip()
+    for raw_line in section(text, "Verification Log", preserve_indent=True).splitlines():
+        line = raw_line.rstrip()
         if line.startswith("- command:"):
             if current:
                 entries.append(current)
@@ -339,22 +339,26 @@ def verification_results(verification: list[str]) -> list[str]:
     """Latest result per exact legacy command and recorded context, never by recency alone."""
     entries: list[list[str]] = []
     for raw_line in "\n".join(verification).splitlines():
-        line = raw_line.strip()
-        if not line:
+        if not raw_line.strip():
             continue
-        if line.startswith("- ") or not entries:
+        if raw_line.startswith("- ") or not entries:
             entries.append([])
-        entries[-1].append(line)
+        entries[-1].append(raw_line)
 
     latest: dict[tuple[tuple[str, str], ...], str] = {}
     invalid: list[str] = []
     for entry in entries:
         fields: dict[str, str] = {}
         malformed = not entry[0].startswith("- command:")
-        for line in entry:
-            key, separator, value = line.removeprefix("- ").partition(":")
-            value = value.strip()
-            if not separator or not key or key in fields or not value:
+        for index, line in enumerate(entry):
+            prefix = "- " if index == 0 else "  "
+            match = re.fullmatch(rf"{prefix}([a-z][a-z0-9_-]*):[ \t]+(\S.*)", line)
+            if not match:
+                malformed = True
+                continue
+            key, value = match.groups()
+            value = value.rstrip()
+            if key in fields or re.match(r"^[|>][0-9+-]*(?:\s|$)", value):
                 malformed = True
             fields[key] = value
         command = fields.get("command", "")
@@ -385,7 +389,7 @@ def commit_gate_errors(
     if active_epic_state == "blocked":
         errors.append("active epic state is blocked")
     # Candidate/message excerpts may be bounded; readiness always reads the full log.
-    history = section(ledger_text, "Verification Log")
+    history = section(ledger_text, "Verification Log", preserve_indent=True)
     evidence = history.splitlines() if history else verification
     if not evidence:
         errors.append("missing verification log evidence")
@@ -438,6 +442,7 @@ def format_evidence(lines: list[str], nested: bool = False) -> list[str]:
     detail_indent = "    " if nested else "  "
     formatted: list[str] = []
     for index, line in enumerate(lines):
+        line = line.strip()
         if line.startswith("- "):
             formatted.append(item_indent + line)
         elif index == 0:

@@ -169,7 +169,7 @@ class CommitProgressTests(unittest.TestCase):
             ledger_path="notes/epics/2026-05-18-demo.md",
             active_epic_state="complete-pending-advance",
             ledger_text="ledger",
-            verification=["- command: `pytest`", "result: pass", "notes: ok"],
+            verification=["- command: `pytest`", "  result: pass", "  notes: ok"],
             review=["- reviewed-at: 2026-07-11T11:00:00Z", "result: pass", "notes: clean"],
             open_loops=["none"],
         )
@@ -181,7 +181,7 @@ class CommitProgressTests(unittest.TestCase):
             ledger_path="notes/epics/2026-05-18-demo.md",
             active_epic_state="active",
             ledger_text="ledger",
-            verification=["- command: `pytest`", "result: pass", "notes: ok"],
+            verification=["- command: `pytest`", "  result: pass", "  notes: ok"],
             review=["- review-result: pass"],
             open_loops=["none"],
         )
@@ -193,7 +193,7 @@ class CommitProgressTests(unittest.TestCase):
             ledger_path="notes/epics/2026-05-18-demo.md",
             active_epic_state="complete-pending-advance",
             ledger_text="ledger",
-            verification=["- command: `pytest`", "result: pass", "notes: ok"],
+            verification=["- command: `pytest`", "  result: pass", "  notes: ok"],
             review=["result: fail", "notes: fixed later", "result: pass", "notes: clean"],
             open_loops=["none"],
         )
@@ -205,7 +205,7 @@ class CommitProgressTests(unittest.TestCase):
             ledger_path="notes/epics/2026-05-18-demo.md",
             active_epic_state="active",
             ledger_text="ledger",
-            verification=["- command: `pytest`", "result: pass", "notes: ok"],
+            verification=["- command: `pytest`", "  result: pass", "  notes: ok"],
             review=["reviewed-at: not-run", "result: pending", "notes: not reviewed"],
             open_loops=["none"],
         )
@@ -228,7 +228,7 @@ class CommitProgressTests(unittest.TestCase):
         lines = self.commit_progress.latest_verification_lines(ledger)
 
         self.assertEqual(lines[0], "- command: `check-0`")
-        self.assertEqual(lines[-1], "notes: result 4")
+        self.assertEqual(lines[-1], "  notes: result 4")
         self.assertEqual(len(lines), 15)
 
     def test_verification_history_gates_each_check_independently(self) -> None:

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 
@@ -25,10 +27,12 @@ class CrossAgentEvaluationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runner = load_runner()
 
-    def prepare_lifecycle(self, root: Path, source: str) -> tuple[dict, Path]:
+    def prepare_lifecycle(self, root: Path, source: str, files: dict[str, str] | None = None) -> tuple[dict, Path]:
         self.runner.init_repo(root)
         state = self.runner.seed_active(root)
         self.runner.write(root / "src/calc.py", source)
+        for name, content in (files or {}).items():
+            self.runner.write(root / name, content)
         self.runner.write(
             root / "notes/epics/current.md",
             self.runner.passing_ledger(state["base"], ["src/", "tests/"]),
@@ -61,6 +65,78 @@ class CrossAgentEvaluationTests(unittest.TestCase):
                 errors = self.runner.grade_lifecycle(root, state)
                 self.assertTrue(any("behavior" in error for error in errors), errors)
 
+    def test_lifecycle_accepts_project_and_relative_imports(self) -> None:
+        for module in ("src.arithmetic", ".arithmetic"):
+            with self.subTest(module=module), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                state, _ = self.prepare_lifecycle(
+                    root,
+                    f"from {module} import difference\n\ndef add(a, b):\n    return a + b\n"
+                    "\ndef subtract(a, b):\n    return difference(a, b)\n",
+                    {
+                        "src/arithmetic.py": "def difference(a, b):\n    return a - b\n",
+                        "tests/test_calc.py": "import unittest\nfrom src.calc import add, subtract\n\n"
+                        "class CalcTests(unittest.TestCase):\n"
+                        "    def test_arithmetic(self):\n"
+                        "        self.assertEqual(add(2, 7), 9)\n"
+                        "        self.assertEqual(subtract(2, 7), -5)\n",
+                    },
+                )
+                native = self.runner.run([sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests"], root)
+                self.assertEqual(native.returncode, 0, native.stderr)
+                self.assertEqual(self.runner.grade_lifecycle(root, state), [])
+
+    def test_lifecycle_rejects_missing_function_or_dependency(self) -> None:
+        for source in (
+            "# subtract is missing\ndef add(a, b):\n    return a + b\n",
+            "from src.missing_dependency import subtract\ndef add(a, b):\n    return a + b\n",
+        ):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                state, _ = self.prepare_lifecycle(root, source)
+                self.assertTrue(any("behavior check failed" in error for error in self.runner.grade_lifecycle(root, state)))
+
+    def test_lifecycle_reports_behavior_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state, _ = self.prepare_lifecycle(root, "def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n")
+            original_run = self.runner.run
+
+            def timeout_behavior(command, cwd, **kwargs):
+                if "-I" in command:
+                    self.assertEqual(kwargs["timeout"], 10)
+                    raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+                return original_run(command, cwd, **kwargs)
+
+            with patch.object(self.runner, "run", side_effect=timeout_behavior):
+                errors = self.runner.grade_lifecycle(root, state)
+            self.assertTrue(any("behavior check could not complete" in error for error in errors), errors)
+
+    def test_trial_records_malformed_ledger_as_failed_grade(self) -> None:
+        scenario = next(item for item in self.runner.scenarios() if item.name == "implement-verify-review")
+        original_run = self.runner.run
+        with tempfile.TemporaryDirectory() as tmp:
+            for trial, corruption in enumerate(("encoding", "directory", "missing"), 1):
+                with self.subTest(corruption=corruption):
+                    def fake_agent(command, cwd, **kwargs):
+                        if command[0] == "codex":
+                            ledger = cwd / "notes/epics/current.md"
+                            if corruption == "encoding":
+                                ledger.write_bytes(b"\xff")
+                            else:
+                                ledger.unlink()
+                                if corruption == "directory":
+                                    ledger.mkdir()
+                            return subprocess.CompletedProcess(command, 0, "stub agent completed", "")
+                        return original_run(command, cwd, **kwargs)
+
+                    with patch.object(self.runner, "run", side_effect=fake_agent):
+                        report = self.runner.run_trial("codex", scenario, trial, Path(tmp), None, 1.0, 30)
+                    self.assertFalse(report["passed"])
+                    self.assertTrue(any("ledger" in error for error in report["errors"]), report)
+                    stored = json.loads((Path(report["artifact"]) / "grade.json").read_text())
+                    self.assertEqual(stored, report)
+
     def test_lifecycle_rejects_invalid_manifest_with_working_code(self) -> None:
         for content in ("{}", "[]", "not json"):
             with self.subTest(content=content), tempfile.TemporaryDirectory() as tmp:
@@ -73,7 +149,7 @@ class CrossAgentEvaluationTests(unittest.TestCase):
                 self.assertTrue(any("review" in error.lower() for error in errors), errors)
 
     def test_lifecycle_rejects_stale_or_unrelated_review(self) -> None:
-        for mutation in ("code", "ledger", "ref", "ledger-path", "scope"):
+        for mutation in ("code", "ledger", "ref", "ledger-path", "scope", "head", "staged"):
             with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 source = "def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n"
@@ -89,6 +165,11 @@ class CrossAgentEvaluationTests(unittest.TestCase):
                 elif mutation == "ledger-path":
                     manifest["ledger_path"] = "notes/epics/other.md"
                     manifest_path.write_text(json.dumps(manifest))
+                elif mutation == "head":
+                    self.runner.commit_all(root, "unexpected commit")
+                elif mutation == "staged":
+                    self.runner.write(root / "scratch.txt", "user-owned work\n")
+                    self.runner.git(root, "add", "scratch.txt")
                 else:
                     # A valid snapshot of another file cannot vouch for calc.py.
                     manifest_path.unlink()
@@ -96,7 +177,13 @@ class CrossAgentEvaluationTests(unittest.TestCase):
                     self.runner.write(root / "tests/test_calc.py", "# unrelated change\n")
                     self.runner.write(root / "notes/epics/current.md", self.runner.passing_ledger(state["base"], ["tests/"]))
                     self.runner.capture_manifest(root, "notes/epics/current.md")
-                self.assertTrue(self.runner.grade_lifecycle(root, state))
+                errors = self.runner.grade_lifecycle(root, state)
+                self.assertTrue(errors)
+                if mutation == "head":
+                    self.assertIn("lifecycle changed HEAD before authorized commit", errors)
+                elif mutation == "staged":
+                    self.assertIn("staged paths exist outside reviewed change set", errors)
+                    self.assertEqual(self.runner.git(root, "diff", "--cached", "--name-only").stdout.strip(), "scratch.txt")
 
     def test_scenario_registry_covers_required_behaviors(self) -> None:
         names = {scenario.name for scenario in self.runner.scenarios()}

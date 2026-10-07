@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -132,6 +133,62 @@ class ReviewedChangeSetTests(unittest.TestCase):
             text=True,
             capture_output=True,
         )
+
+    def test_candidate_verification_requires_flat_unambiguous_records(self) -> None:
+        failed = "- command: `pytest`\n  result: fail"
+        passed = "- command: `pytest`\n  result: pass"
+        malformed = [
+            "- command: `pytest`\n  notes: |\n    result: pass",
+            "- command: `pytest`\n  result : fail\n  result: pass",
+            "- command: `pytest`\n  command : `lint`\n  result: pass",
+            "- command: `pytest`\n  scope : api\n  scope: web\n  result: pass",
+            "- command: `pytest`\n  result: pass\n  notes: >-",
+            "- command: `pytest`\n  result: pass\n    scope: api",
+            "- command: `pytest`\n  result: pass\n    - command: `lint`\n      result: pass",
+            "  - command: `pytest`\n    result: pass",
+        ]
+        cases = [(f"{failed}\n{entry}\n{passed}", "malformed") for entry in malformed]
+        cases += [
+            ("  - command: `pytest`\n  result: pass", "malformed"),
+            (f"{failed}\n{passed}", None),
+            (f"- command: `pytest`\n  result: blocked\n{passed}", None),
+            (f"{passed}\n  notes: expected result: fail in diagnostic", None),
+            (f"{passed}\n{failed}", "failing"),
+            (f"{failed}\n" + "\n".join(f"- command: `{cmd}`\n  result: pass" for cmd in ("lint", "format", "types")), "failing"),
+            (f"{failed}\n  scope: api\n{passed}\n  scope: web", "failing"),
+            (f"{failed}\n  scope: api\n{passed}", "failing"),
+            (f"{failed}\n  scope: api\n  cwd: server\n{passed}\n  cwd: server\n  scope: api", None),
+        ]
+        for history, blocker in cases:
+            with self.subTest(history=history), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                head = self.init_repo(root)
+                (root / "src/app.py").write_text("VALUE = 2\n")
+                ledger = self.write_passing_ledger(root, head, ["src/"])
+                ledger.write_text(ledger.read_text().replace(
+                    "- command: `python3 -m unittest`\n  result: pass\n  notes: ok", history,
+                ))
+                manifest = self.capture.capture(root, "notes/epics/demo.md")
+                (root / "scratch.txt").write_text("unrelated user work\n")
+                index_before = (root / ".git/index").read_bytes()
+                result = self.run_candidate(root, manifest)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                match = re.search(r"## JSON\s+```json\n(.*?)\n```", result.stdout, re.DOTALL)
+                self.assertIsNotNone(match, result.stdout)
+                candidate = json.loads(match.group(1))
+                errors = candidate["commit_gate_errors"]
+                if blocker == "malformed":
+                    self.assertIn("verification log lacks structured result markers", errors)
+                elif blocker == "failing":
+                    self.assertEqual(errors, ["verification log contains failing or blocked check"])
+                else:
+                    self.assertEqual(errors, [])
+                self.assertEqual(candidate["reviewed_file_count"], 1)
+                self.assertEqual(candidate["stale_reviewed_file_count"], 0)
+                self.assertLessEqual(sum(line.startswith("- command:") for line in candidate["verification"]), 3)
+                self.assertEqual((root / ".git/index").read_bytes(), index_before)
+                self.assertEqual(git(root, "rev-parse", "HEAD").stdout.strip(), head)
+                self.assertEqual((root / "scratch.txt").read_text(), "unrelated user work\n")
 
     def test_capture_uses_compact_git_snapshot_and_ignored_ledger_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
