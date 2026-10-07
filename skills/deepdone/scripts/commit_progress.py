@@ -49,7 +49,6 @@ LOCAL_ONLY_PATTERNS = [
     re.compile(r"(^|/)\.deepdone/reviews/[^/]+\.json$"),
 ]
 
-VERIFICATION_RESULT_RE = re.compile(r"(^|\s|[-*`])result:\s*(pass|fail|blocked)\b", re.IGNORECASE)
 REVIEW_RESULT_RE = re.compile(r"(^|\s|[-*`])review-result:\s*(pass|fail|blocked)\b", re.IGNORECASE)
 REVIEW_SECTION_RESULT_RE = re.compile(r"(^|\s|[-*`])result:\s*(pending|pass|fail|blocked)\b", re.IGNORECASE)
 REVIEW_BLOCKER_RE = re.compile(r"\b(blocked|blocking|unresolved|deferred|needs user|needs_user|failed|fail)\b", re.IGNORECASE)
@@ -258,7 +257,7 @@ def latest_lines(text: str, section_name: str, limit: int = 8) -> list[str]:
     return lines[-limit:]
 
 
-def latest_verification_lines(text: str, limit: int = 3) -> list[str]:
+def latest_verification_lines(text: str, limit: int | None = None) -> list[str]:
     entries: list[list[str]] = []
     current: list[str] = []
     for raw_line in section(text, "Verification Log").splitlines():
@@ -271,7 +270,8 @@ def latest_verification_lines(text: str, limit: int = 3) -> list[str]:
             current.append(line)
     if current:
         entries.append(current)
-    return [line for entry in entries[-limit:] for line in entry]
+    selected = entries if limit is None else entries[-limit:]
+    return [line for entry in selected for line in entry]
 
 
 def current_milestone(ledger_text: str) -> str | None:
@@ -336,12 +336,39 @@ def latest_review_evidence(review: list[str]) -> list[str]:
 
 
 def verification_results(verification: list[str]) -> list[str]:
-    results: list[str] = []
-    for line in verification:
-        match = VERIFICATION_RESULT_RE.search(line)
-        if match:
-            results.append(match.group(2).lower())
-    return results
+    """Latest result per exact legacy command and recorded context, never by recency alone."""
+    entries: list[list[str]] = []
+    for raw_line in "\n".join(verification).splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("- ") or not entries:
+            entries.append([])
+        entries[-1].append(line)
+
+    latest: dict[tuple[tuple[str, str], ...], str] = {}
+    invalid: list[str] = []
+    for entry in entries:
+        fields: dict[str, str] = {}
+        malformed = not entry[0].startswith("- command:")
+        for line in entry:
+            key, separator, value = line.removeprefix("- ").partition(":")
+            value = value.strip()
+            if not separator or not key or key in fields or not value:
+                malformed = True
+            fields[key] = value
+        command = fields.get("command", "")
+        if command.startswith("`") and command.endswith("`"):
+            command = command[1:-1]
+        result = fields.get("result", "").lower()
+        if malformed or not command.strip() or result not in {"pass", "fail", "blocked"}:
+            invalid.append("invalid")
+            continue
+        fields["command"] = command
+        # Scope/configuration belong in the command or explicit fields, never notes.
+        identity = tuple(sorted((key, value) for key, value in fields.items() if key not in {"result", "notes"}))
+        latest[identity] = result
+    return [*latest.values(), *invalid]
 
 
 def commit_gate_errors(
@@ -357,13 +384,16 @@ def commit_gate_errors(
         errors.append("missing active ledger")
     if active_epic_state == "blocked":
         errors.append("active epic state is blocked")
-    if not verification:
+    # Candidate/message excerpts may be bounded; readiness always reads the full log.
+    history = section(ledger_text, "Verification Log")
+    evidence = history.splitlines() if history else verification
+    if not evidence:
         errors.append("missing verification log evidence")
     else:
-        results = verification_results(verification)
-        if not results:
+        results = verification_results(evidence)
+        if not results or "invalid" in results:
             errors.append("verification log lacks structured result markers")
-        elif any(result in {"fail", "blocked"} for result in results):
+        if any(result in {"fail", "blocked"} for result in results):
             errors.append("verification log contains failing or blocked check")
     if not review:
         errors.append("missing review evidence")
@@ -503,6 +533,7 @@ def validate_reviewed_change_set(
 ) -> tuple[list[GitFile], list[GitFile], list[str], list[str], list[str], str | None, Path | None, set[str]]:
     errors: list[str] = []
     stale: list[str] = []
+    staged_unowned: list[str] = []
     entry = latest_review_entry(ledger_text) if ledger_text else {}
     entry_manifest = str(entry.get("manifest", ""))
     chosen_manifest = manifest_value or entry_manifest or None
@@ -746,7 +777,7 @@ def main() -> int:
 
     epic, ledger_path, active_epic_state, ledger_text = parse_active_ledger(root, args.ledger)
     milestone = current_milestone(ledger_text) if ledger_text else None
-    verification = latest_verification_lines(ledger_text) if ledger_text else []
+    verification = latest_verification_lines(ledger_text, limit=3) if ledger_text else []
     review = review_lines(ledger_text) if ledger_text else []
     open_loops = latest_lines(ledger_text, "Open Loops") if ledger_text else []
     gate_errors = commit_gate_errors(ledger_path, active_epic_state, ledger_text, verification, review, open_loops)

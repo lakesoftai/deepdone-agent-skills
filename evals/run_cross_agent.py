@@ -18,6 +18,11 @@ from typing import Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_DIR = ROOT / "skills/deepdone/scripts"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import commit_progress  # noqa: E402
+
 SCHEMA_PATH = ROOT / "evals" / "result-schema.json"
 AGENTS = ("codex", "claude")
 PROFILES = {"smoke": 1, "release": 3}
@@ -206,19 +211,43 @@ def seed_active(root: Path, *, roadmap: bool = False) -> dict[str, object]:
 def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
     errors: list[str] = []
     ledger = read_or_empty(root / "notes/epics/current.md")
-    if "def subtract" not in read_or_empty(root / "src/calc.py"):
-        errors.append("implementation missing")
-    if "result: pass" not in section(ledger, "Verification Log"):
-        errors.append("verification pass missing")
-    review = section(ledger, "Review")
-    for field in ("result: pass", "review-id:", "base-head:", "manifest:", "scope:", "evidence:"):
-        if field not in review:
-            errors.append(f"passing Review missing {field}")
+    # Execute grader-owned expectations in a fresh process, not agent-owned tests.
+    check = (
+        "import runpy\n"
+        "calc = runpy.run_path('src/calc.py')\n"
+        "for a, b, difference, total in [(7, 2, 5, 9), (2, 7, -5, 9), "
+        "(-3, -5, 2, -8), (0, 0, 0, 0), (1.5, 0.5, 1.0, 2.0)]:\n"
+        "    assert calc['subtract'](a, b) == difference, ('subtract', a, b)\n"
+        "    assert calc['add'](a, b) == total, ('add', a, b)\n"
+    )
+    try:
+        result = run([sys.executable, "-I", "-B", "-c", check], root, timeout=10)
+        if result.returncode != 0:
+            errors.append(f"calculator behavior check failed: {result.stderr.strip()[-2000:]}")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        errors.append(f"calculator behavior check could not complete: {exc}")
+
+    # Use the evaluator's helper, not a potentially edited copy in the fixture.
+    try:
+        errors.extend(commit_progress.commit_gate_errors(
+            "notes/epics/current.md", None, ledger,
+            commit_progress.latest_verification_lines(ledger),
+            commit_progress.review_lines(ledger),
+            section(ledger, "Open Loops").splitlines(),
+        ))
+        validation = commit_progress.validate_reviewed_change_set(
+            root, "notes/epics/current.md", ledger, None, commit_progress.parse_status_z(root),
+        )
+        errors.extend(validation[2])
+        if "src/calc.py" not in validation[7]:
+            errors.append("calculator implementation is outside reviewed snapshot")
+        if state.get("base") and git(root, "rev-parse", "HEAD").stdout.strip() != state["base"]:
+            errors.append("lifecycle changed HEAD before authorized commit")
+    except Exception as exc:
+        # Malformed evidence is a grading failure, not a crashed evaluation run.
+        errors.append(f"review evidence validation failed: {type(exc).__name__}: {exc}")
     if section(ledger, "Status").strip() != "complete":
         errors.append("epic not complete after review")
-    manifest_match = re.search(r"^\s*manifest:\s*(.+)$", review, flags=re.MULTILINE)
-    if not manifest_match or not (root / manifest_match.group(1).strip()).exists():
-        errors.append("review manifest missing")
     return errors
 
 

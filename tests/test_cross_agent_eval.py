@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -23,6 +24,79 @@ def load_runner():
 class CrossAgentEvaluationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runner = load_runner()
+
+    def prepare_lifecycle(self, root: Path, source: str) -> tuple[dict, Path]:
+        self.runner.init_repo(root)
+        state = self.runner.seed_active(root)
+        self.runner.write(root / "src/calc.py", source)
+        self.runner.write(
+            root / "notes/epics/current.md",
+            self.runner.passing_ledger(state["base"], ["src/", "tests/"]),
+        )
+        manifest = self.runner.capture_manifest(root, "notes/epics/current.md")
+        return state, root / manifest
+
+    def test_lifecycle_accepts_valid_behavior_and_review_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state, _ = self.prepare_lifecycle(
+                root, "def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n",
+            )
+            before = self.runner.git(root, "write-tree").stdout
+            self.assertEqual(self.runner.grade_lifecycle(root, state), [])
+            self.assertEqual(self.runner.git(root, "write-tree").stdout, before)
+            self.assertEqual(self.runner.git(root, "rev-parse", "HEAD").stdout.strip(), state["base"])
+
+    def test_lifecycle_rejects_incorrect_behavior_despite_valid_review(self) -> None:
+        for add, subtract in (
+            ("a + b", "a + b"),
+            ("a - b", "a - b"),
+            ("a + b", '(_ for _ in ()).throw(RuntimeError("broken implementation"))'),
+        ):
+            with self.subTest(add=add, subtract=subtract), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                state, _ = self.prepare_lifecycle(
+                    root, f"def add(a, b):\n    return {add}\n\ndef subtract(a, b):\n    return {subtract}\n",
+                )
+                errors = self.runner.grade_lifecycle(root, state)
+                self.assertTrue(any("behavior" in error for error in errors), errors)
+
+    def test_lifecycle_rejects_invalid_manifest_with_working_code(self) -> None:
+        for content in ("{}", "[]", "not json"):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                state, manifest = self.prepare_lifecycle(
+                    root, "def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n",
+                )
+                manifest.write_text(content, encoding="utf-8")
+                errors = self.runner.grade_lifecycle(root, state)
+                self.assertTrue(any("review" in error.lower() for error in errors), errors)
+
+    def test_lifecycle_rejects_stale_or_unrelated_review(self) -> None:
+        for mutation in ("code", "ledger", "ref", "ledger-path", "scope"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                source = "def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n"
+                state, manifest_path = self.prepare_lifecycle(root, source)
+                manifest = json.loads(manifest_path.read_text())
+                if mutation == "code":
+                    self.runner.write(root / "src/calc.py", source + "\n# changed after review\n")
+                elif mutation == "ledger":
+                    ledger = root / "notes/epics/current.md"
+                    ledger.write_text(ledger.read_text().replace("notes: ok", "notes: changed evidence"))
+                elif mutation == "ref":
+                    self.runner.git(root, "update-ref", "-d", manifest["review_ref"])
+                elif mutation == "ledger-path":
+                    manifest["ledger_path"] = "notes/epics/other.md"
+                    manifest_path.write_text(json.dumps(manifest))
+                else:
+                    # A valid snapshot of another file cannot vouch for calc.py.
+                    manifest_path.unlink()
+                    self.runner.git(root, "update-ref", "-d", manifest["review_ref"])
+                    self.runner.write(root / "tests/test_calc.py", "# unrelated change\n")
+                    self.runner.write(root / "notes/epics/current.md", self.runner.passing_ledger(state["base"], ["tests/"]))
+                    self.runner.capture_manifest(root, "notes/epics/current.md")
+                self.assertTrue(self.runner.grade_lifecycle(root, state))
 
     def test_scenario_registry_covers_required_behaviors(self) -> None:
         names = {scenario.name for scenario in self.runner.scenarios()}

@@ -71,6 +71,21 @@ Append lines under `## Verification Log` such as:
 
 `result:` is required. Use only `pass`, `fail`, or `blocked`.
 
+Commit readiness reads the full history and uses the latest result for each
+exact command and recorded context. Optional flat fields such as `cwd`, `scope`,
+or `config` distinguish otherwise identical commands; every field other than
+`result` and `notes` participates in identity. Record context there or in the
+command itself, never only in notes. A matching successful rerun supersedes a
+failure or blocker; unrelated successes do not. Keep earlier entries intact.
+Missing results, duplicate fields, empty values, and malformed records block
+readiness. Candidate and commit-message excerpts show only the last three entries.
+
+This legacy format does not prove source freshness or enumerate all required
+checks. Confirm applicability before reusing results. All entries are readiness
+evidence: an expected failing reproduction is diagnostic evidence, not a readiness
+pass. Preserve it separately in the ledger's notes or Decisions and record the
+actual readiness rerun here. Typed reproduction receipts are not supported yet.
+
 ## Risk Triggers
 
 Broaden verification when change touches:

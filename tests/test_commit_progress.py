@@ -227,9 +227,88 @@ class CommitProgressTests(unittest.TestCase):
 
         lines = self.commit_progress.latest_verification_lines(ledger)
 
-        self.assertEqual(lines[0], "- command: `check-2`")
+        self.assertEqual(lines[0], "- command: `check-0`")
         self.assertEqual(lines[-1], "notes: result 4")
-        self.assertEqual(len(lines), 9)
+        self.assertEqual(len(lines), 15)
+
+    def test_verification_history_gates_each_check_independently(self) -> None:
+        cases = [
+            ([("test-main", "fail"), ("test-main", "pass")], False),
+            ([("test-main", "blocked"), ("test-main", "pass")], False),
+            ([("test-main", "fail"), ("lint", "pass"), ("format", "pass"), ("types", "pass")], True),
+            ([("test-main", "pass"), ("test-main", "fail")], True),
+            ([("test-main", "pass"), ("lint", "pass")], False),
+        ]
+        for history, blocked in cases:
+            with self.subTest(history=history):
+                ledger = "## Verification Log\n\n" + "\n".join(
+                    f"- command: `{command}`\n  result: {result}\n  notes: run {index}"
+                    for index, (command, result) in enumerate(history)
+                )
+                for limit in (None, 1):
+                    errors = self.commit_progress.commit_gate_errors(
+                        "notes/epics/current.md", "active", ledger,
+                        self.commit_progress.latest_verification_lines(ledger, limit=limit),
+                        ["result: pass"], ["none"],
+                    )
+                    self.assertEqual(bool(errors), blocked, errors)
+
+    def test_verification_does_not_merge_different_contexts(self) -> None:
+        for field in ("cwd", "scope", "config"):
+            with self.subTest(field=field):
+                ledger = (
+                    "## Verification Log\n\n"
+                    f"- command: `pytest`\n  {field}: api\n  result: fail\n"
+                    f"- command: `pytest`\n  {field}: web\n  result: pass\n"
+                )
+                errors = self.commit_progress.commit_gate_errors(
+                    "notes/epics/current.md", "active", ledger,
+                    self.commit_progress.latest_verification_lines(ledger),
+                    ["result: pass"], ["none"],
+                )
+                self.assertTrue(errors)
+                ledger += f"- command: `pytest`\n  {field}: api\n  result: pass\n"
+                self.assertEqual(self.commit_progress.commit_gate_errors(
+                    "notes/epics/current.md", "active", ledger,
+                    self.commit_progress.latest_verification_lines(ledger),
+                    ["result: pass"], ["none"],
+                ), [])
+
+    def test_incomplete_verification_cannot_borrow_another_result(self) -> None:
+        for evidence in (
+            "- command: `tests`\n  notes: never ran",
+            "- command: `tests`\n  result: pending",
+            "- command: `tests`\n  result: pass eventually",
+            "- command: `tests`\n  result: fail\n  result: pass",
+            "- command: ``\n  result: pass",
+            "- command: `tests`\n  notes: result: pass",
+        ):
+            with self.subTest(evidence=evidence):
+                ledger = f"## Verification Log\n\n{evidence}\n- command: `lint`\n  result: pass\n"
+                errors = self.commit_progress.commit_gate_errors(
+                    "notes/epics/current.md", "active", ledger,
+                    self.commit_progress.latest_verification_lines(ledger),
+                    ["result: pass"], ["none"],
+                )
+                self.assertTrue(errors)
+
+    def test_absent_manifest_returns_structured_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.commit_progress.validate_reviewed_change_set(Path(tmp), None, "", None, [])
+        self.assertEqual(len(result), 8)
+        self.assertIn("latest passing review has no reviewed change-set manifest", result[2])
+        self.assertEqual(result[4], [])
+        self.assertEqual(result[7], set())
+
+    def test_missing_manifest_file_returns_structured_blocker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.commit_progress.validate_reviewed_change_set(
+                Path(tmp), None, "", ".deepdone/reviews/missing.json", [],
+            )
+        self.assertEqual(len(result), 8)
+        self.assertIn("Reviewed change-set manifest does not exist: .deepdone/reviews/missing.json", result[2])
+        self.assertEqual(result[4], [])
+        self.assertEqual(result[7], set())
 
     def test_review_entry_with_many_paths_is_not_truncated(self) -> None:
         paths = "\n".join(f"    - src/path-{index}.py" for index in range(60))
