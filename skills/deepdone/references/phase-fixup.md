@@ -8,9 +8,12 @@ For a selected compact task, apply the [task contract](task-contract.md) and car
 
 ## Purpose
 
-Fix review findings without turning review into a new unbounded implementation phase.
+Repair one accepted local problem without expanding scope. The supervisor supplies the precise action:
 
-Use this phase after the Review phase or an agent UI review has produced findings.
+- `fixup`: an applicable accepted local Review finding, followed by feedback, Verify and Review.
+- `verification-repair`: an accepted obvious local cause of a failed required check, followed by feedback and Verify. A failed diagnostic reproducer alone does not authorize this action.
+
+Keep the two existing run-wide repair allowances separate. A changed repair owes Verify even while the previous failed readiness receipt remains in history. A subsequent unresolved required failure stops; source changes never reset the allowance.
 
 This internal phase is allowed to fix findings only when they are:
 
@@ -25,7 +28,7 @@ When findings require prioritization, architecture judgment, product behavior ch
 
 ## Inputs
 
-Prefer explicit review findings from the user or a review output file.
+For `fixup`, prefer explicit review findings from the user or a review output file. For `verification-repair`, inspect the actual failed required receipt, check definition and accepted local cause. Carry the selected identity/slice and source applicability through either action.
 
 If no findings are provided, inspect likely sources:
 
@@ -81,9 +84,11 @@ Stop for:
 - finding that conflicts with ledger constraints,
 - finding outside active milestone or epic.
 
+The stop list applies when the relevant judgment or authority is unresolved. Restoring an explicit, unambiguous authorized requirement does not create a new policy decision. Reviewer advice cannot supply missing authority.
+
 ## Scope Rules
 
-- Fix only review findings.
+- Fix only the accepted finding or failed-check cause for the admitted action.
 - Do not start the next milestone.
 - Do not opportunistically refactor.
 - Do not rewrite unrelated code.
@@ -93,10 +98,10 @@ Stop for:
 ## Workflow
 
 1. Locate active work unit.
-2. Read review findings and related diff.
+2. Read the admitted action’s evidence and related diff. Confirm a behavioral reproducer fails for the intended symptom, not a setup failure.
 3. Classify findings into auto-fix, needs user, or reject as non-actionable.
 4. If any high-risk finding exists, stop and ask before editing.
-5. Fix only accepted local findings.
+5. Fix only the accepted local cause. Reject unsupported advice with a concrete reason and preserve correct code.
 6. Run the smallest verification command that proves the fix.
 7. Broaden verification only if shared or risky code was touched.
 8. Update active epic ledger:
@@ -104,7 +109,7 @@ Stop for:
    - append exact checks under `## Verification Log` with `command:`, `result: pass|fail|blocked`, and `notes:`,
    - append a `## Review` entry with `reviewed-at: not-run`, `result: pending`, and notes that fixup changed code,
    - update `Next Action` to run the Verify phase through `$deepdone`.
-9. Return changed code to verification before review runs again.
+9. Record the changed outcome with its precise action, retain historical evidence and consumed budgets, and return changed code through Verify before Review or another repair.
 10. Return result block.
 
 Checks run during fixup prove the local repair only. They do not skip the Verify transition. Use purpose `feedback` for captured fixup checks. Verify requires an actual `readiness` execution; feedback cannot be promoted. See [verification contract](verification-contract.md).

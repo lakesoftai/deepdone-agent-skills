@@ -12,6 +12,18 @@ Review local diff skeptically, with correctness above agreement.
 - `DD-OWN-001`, `DD-DRIFT-001`
 - `DD-REVIEW-001`, `DD-EVIDENCE-001`, `DD-COMMIT-001`
 
+## Reviewer context and independence
+
+Use one fresh reviewer context when the host provides it. Supply original requirements, acceptance and constraints; selected task/epic and slice; the exact active diff including relevant untracked files; necessary surrounding source; and actual check definitions, results, purposes, freshness and known limitations. Identify the observed source with existing observation/snapshot facilities. Do not pass only the implementer's summary or verdict.
+
+Before recording pass and capturing the snapshot, recheck that source and verification still apply to what the reviewer saw. Changed source needs applicable verification and review again. No new durable review protocol is required.
+
+If a separate context is unavailable, disclose that limitation and use bounded self-review. Never claim independence. An explicit user requirement for independent review still applies; do not provision another service to satisfy it.
+
+Review both missing requirements and implementation correctness. Inspect changed assertions, fixtures, test selection, CI gates, coverage/performance budgets and suppressions for lost checking. A justified replacement is valid. Findings need concrete evidence, impact and a useful correction direction. A clean review is valid; require neither a finding quota nor speculative hardening, routine specialists or automatic mutation testing. Use an isolated targeted mutation only to resolve a concrete doubt about a critical check.
+
+The supervisor adjudicates advice: accept supported findings, reject incorrect recommendations with a reason, and preserve correct behavior. Reviewer advice alone is neither product authority nor a reason to patch correct code. Keep material blockers ahead of minor follow-ups and stop reviewing when acceptance is met.
+
 ## Primary Review Axes
 
 - correctness

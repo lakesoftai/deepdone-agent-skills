@@ -255,15 +255,18 @@ def classify(facts, ctx):
     last_work = next((e for e in reversed(events) if e['phase'] in {'implement', 'fixup'} and e['result'] == 'changed'), None)
     resolution = ctx.get('resolution', {})
     slice_ = last_work['slice'] if last_work else resolution.get('slice', facts['slice'])
-    verified = next((e for e in reversed(events) if e['phase'] == 'verify' and e['result'] == 'pass' and e['token'] == facts['token'] and e['slice'] == slice_), None)
+    boundary = next((e for e in reversed(events) if e['phase'] == 'verify' and e['token'] == facts['token'] and e['slice'] == slice_), None)
+    verified = boundary if boundary and boundary['result'] == 'pass' else None
     reviewed = facts['review_valid']
-    owes = bool(last_work and (not verified or events.index(verified) < events.index(last_work)))
+    owes = bool(last_work and (not boundary or events.index(boundary) < events.index(last_work)))
+    if owes or (resolution.get('stage') == 'implementation-ready' and not boundary and not reviewed):
+        return result('needs_verification', 'verify', 'verify_boundary', slice_)
     if facts['readiness'] == 'failed':
+        if any(e['action'] == 'verification-repair' for e in events):
+            return result('blocked_needs_user', None, 'verification_repair_budget', slice_)
         if ctx.get('findings', {}).get('disposition') == 'local':
             return result('needs_verification', 'verification-repair', 'verification_failed', slice_)
         return result('needs_tech_decision', 'decide', 'verification_failure_analysis', slice_)
-    if owes or (resolution.get('stage') == 'implementation-ready' and not verified and not reviewed):
-        return result('needs_verification', 'verify', 'verify_boundary', slice_)
     if facts['readiness'] == 'stale':
         return result('needs_verification', 'verify', 'stale_readiness', slice_)
     if facts['readiness'] == 'pass' and not reviewed:

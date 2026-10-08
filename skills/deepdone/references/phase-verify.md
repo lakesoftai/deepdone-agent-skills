@@ -69,6 +69,12 @@ preserve old text, execute real checks, and obtain a new review. Never convert a
 old passing string into a receipt. See the contract for strict JSON shapes,
 unsupported context, generated exclusions, concurrency recovery, and limitations.
 
+## Interpret results before claiming success
+
+Confirm that the command exercised the intended behavior. Distinguish an expected diagnostic symptom from a setup failure, and a meaningful successful check from an empty selection. Preserve both results honestly. Recheck the reproducer and affected original behavior after correction; a final readiness execution or eligible current readiness receipt remains required. Test quantity is not a substitute for acceptance coverage.
+
+A failed required check may permit one accepted, obvious local `verification-repair` through Fixup. After changed repair, cross Verify again before reviewing or requesting another repair; the old failed receipt remains historical evidence. Keep its repair allowance consumed across source and slice changes. An unresolved subsequent failure stops for its exact cause.
+
 ## Risk Triggers
 
 Broaden verification when change touches:

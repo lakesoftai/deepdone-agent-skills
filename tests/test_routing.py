@@ -234,6 +234,7 @@ class RoutingTests(unittest.TestCase):
             ctx={'findings':dict(token=f['token'],slice=f['slice'],basis='Observed local arithmetic failure',disposition='local'),
                  'outcomes':[event(f,'fixup','changed',action='verification-repair')]}
             ctx['outcomes'][0]['token']='prior-source-token'
+            ctx['outcomes'].append(event(f,'verify','fail'))
             self.assertEqual(r.route(f,ctx,mode='until-epic')['stop_reason'],'verification_repair_budget')
             # Constructed conflict table: this is pure admission evidence, not a repository observation.
             f.update(readiness='pass',review='pending')

@@ -78,6 +78,14 @@ Before editing, confirm:
 
 If scope expands materially during execution, stop and route through the Plan phase instead of inventing ad hoc ledger state.
 
+## Meaningful behavioral checks
+
+For a behavioral bug, name the violated requirement and obtain the smallest useful reproducer before correction when feasible. Reuse an adequate existing test. Confirm the actual failure is the intended symptom: a missing dependency, broken fixture, import failure or command that runs no meaningful checks is not reproduction evidence. If reproduction is unavailable, state the reason and the resulting uncertainty.
+
+Derive expected results from requirements, concrete examples or invariants, independently of the implementation. For new behavior, work through meaningful checks incrementally. Apply the smallest relevant correction, rerun the reproducer, and check the affected original behavior. Broaden only for a concrete remaining risk.
+
+Capture expected failing reproductions with purpose `diagnostic`, iterative executions as `feedback`, and final verification through Verify as actual `readiness`. Preserve earlier attempts and their purposes. Do not rewrite evidence to turn a failure into a pass or feedback into readiness. Trivial nonbehavioral edits need no artificial failing test; use applicable existing validation and honest inspection while preserving the readiness gate.
+
 ## Scope Rules
 
 - touch only files needed for the current milestone or small task

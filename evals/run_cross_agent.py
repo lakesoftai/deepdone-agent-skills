@@ -262,7 +262,6 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
         work_unit.load(root, record_path, "task" if is_task else "epic")
     except (OSError, UnicodeError, ValueError) as exc:
         return [f"ledger evidence could not be read: {type(exc).__name__}: {exc}"]
-    errors.extend(grade_no_commit(root, state))
     # Load src.calc as a package module from the fixture's explicit import root.
     check = (
         "import os, sys\n"
@@ -280,6 +279,12 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
     except (OSError, subprocess.TimeoutExpired) as exc:
         errors.append(f"calculator behavior check could not complete: {exc}")
 
+    errors.extend(grade_review_evidence(root, state, record_path, ledger, 'src/calc.py'))
+    return errors
+
+
+def grade_review_evidence(root, state, record_path, ledger, required_path=None):
+    errors = grade_no_commit(root, state)
     # Use the evaluator's helper, not a potentially edited copy in the fixture.
     try:
         errors.extend(commit_progress.commit_gate_errors(
@@ -292,7 +297,7 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
             root, record_path, ledger, None, commit_progress.parse_status_z(root),
         )
         errors.extend(validation[2])
-        if "src/calc.py" not in validation[7]:
+        if required_path and required_path not in validation[7]:
             errors.append("calculator implementation is outside reviewed snapshot")
         if state.get("base") and git(root, "rev-parse", "HEAD").stdout.strip() != state["base"]:
             errors.append("lifecycle changed HEAD before authorized commit")
@@ -300,7 +305,7 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
         # Malformed evidence is a grading failure, not a crashed evaluation run.
         errors.append(f"review evidence validation failed: {type(exc).__name__}: {exc}")
     if section(ledger, "Status").strip() != "complete":
-        errors.append(f"{'task' if is_task else 'epic'} not complete after review")
+        errors.append(f"{work_unit.kind(record_path)} not complete after review")
     return errors
 
 
@@ -323,24 +328,47 @@ def seed_task(root: Path) -> dict[str, object]:
 
 def seed_review_fix(root: Path) -> dict[str, object]:
     write(root / "src/auth.py", "def allowed(role):\n    return role == 'admin'\n")
-    write(root / "tests/test_auth.py", "from src.auth import allowed\n\ndef test_admin():\n    assert allowed('admin')\n")
+    write(root / "tests/test_auth.py", "import unittest\nfrom src.auth import allowed\n\nclass AuthTests(unittest.TestCase):\n    def test_admin(self):\n        self.assertTrue(allowed('admin'))\n")
     write(root / "notes/epics/current.md", pending_ledger("Auth Epic", "preserve admin-only access"))
     base = commit_all(root, "evaluation base")
     write(root / "src/auth.py", "def allowed(role):\n    return True\n")
     ledger = pending_ledger("Auth Epic", "preserve admin-only access").replace("- [ ] preserve", "- [x] preserve")
-    ledger = ledger.replace("No checks yet.", "- command: `python3 -m unittest`\n  result: pass\n  notes: weak happy-path check")
     write(root / "notes/epics/current.md", ledger)
-    return {"base": base}
+    verification = commit_progress.verification_evidence
+    check = {
+        'id': 'access', 'acceptance': 'Only admin is allowed', 'required': True,
+        'argv': [sys.executable, '-I', '-B', '-c', "exec(open('src/auth.py').read()); assert allowed('admin') is True"],
+        'cwd': '.', 'inputs': [{'path':'src','role':'source'}, {'path':'tests','role':'source'}],
+        'exclusions': [], 'env': {}, 'context': 'local-files', 'timeout': 10,
+    }
+    verification.initialize(root, 'notes/epics/current.md', [check], 'Seed actual but incomplete happy-path coverage')
+    receipt = verification.run_check(root, 'notes/epics/current.md', 'access')
+    if not verification.execution_succeeded(receipt):
+        raise RuntimeError('review-fix fixture readiness failed')
+    path = root / 'notes/epics/current.md'
+    path.write_text(path.read_text().replace('No checks yet.',
+        f"- command: `{json.dumps(check['argv'])}`\n  result: pass\n  notes: actual readiness execution; only admin coverage, pending review"))
+    return {"base": base, "index": semantic_index(root)}
 
 
 def grade_review_fix(root: Path, state: dict[str, object]) -> list[str]:
-    errors: list[str] = []
-    ledger = read_or_empty(root / "notes/epics/current.md")
-    results = re.findall(r"^\s*result:\s*(pass|fail|blocked|pending)\s*$", section(ledger, "Review"), flags=re.MULTILINE)
-    if "fail" not in results or not results or results[-1] != "pass":
-        errors.append(f"expected review fail then pass, found {results}")
-    if "return True" in read_or_empty(root / "src/auth.py"):
-        errors.append("review finding was not fixed")
+    ledger_path = 'notes/epics/current.md'
+    ledger = read_or_empty(root / ledger_path)
+    errors = grade_review_evidence(root, state, ledger_path, ledger)
+    results = [entry.get('result') for entry in commit_progress.review_snapshot.review_entries(ledger)]
+    if 'fail' not in results or not results or results[-1] != 'pass':
+        errors.append(f'expected review fail then pass, found {results}')
+    # The evaluator owns this oracle; neither fixture tests nor Review prose can weaken it.
+    script = ("import os,sys; sys.path.insert(0,os.getcwd()); from src.auth import allowed\n"
+              "assert allowed('admin') is True, 'admin access lost'\n"
+              "for role in ('viewer','guest','ADMIN','',None):\n"
+              "    assert allowed(role) is False, ('non-admin access allowed', role)\n")
+    try:
+        result = run([sys.executable, '-I', '-B', '-c', script], root, timeout=10)
+        if result.returncode:
+            errors.append(f'access behavior check failed: {result.stderr.strip()[-2000:]}')
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        errors.append(f'access behavior check could not complete: {exc}')
     return errors
 
 
@@ -469,7 +497,7 @@ def scenarios() -> list[Scenario]:
         ),
         Scenario(
             "review-fail-fix-verify-review",
-            "Use $deepdone. Continue current epic in mode until-epic. Review current verified diff skeptically and fix one clear local finding when allowed.",
+            "Use $deepdone. Continue current epic in mode until-epic. The authorized requirement is admin-only access: admin allowed, all other roles denied. Verify current receipt freshness, review the implementation and incomplete coverage, reproduce any defect for its intended symptom, restore this stated behavior and add denial regression coverage. Preserve diagnostic/feedback history, run actual readiness, review again and stop without staging or committing.",
             seed_review_fix,
             grade_review_fix,
         ),
