@@ -85,7 +85,7 @@ Inspect:
 9. milestones, Verification Log, Review, reviewed change-set manifest and private review ref, Open Loops, Next Action, and Status
 10. current repository files and latest check evidence
 
-Use `scripts/inspect_deepdone_state.py` when available for stable signals. Verify its output against source files before acting.
+Use `scripts/inspect_deepdone_state.py --route` for separate required/admitted actions. Supply only inspected semantic context and original authority as described in the workflow contract. Follow `admitted_phase`; null means stop. Keep transient outcomes and the pinned slice across iterations; no session file is required. Verify semantic judgments against source before acting.
 
 ## Workflow
 

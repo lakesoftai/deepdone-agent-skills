@@ -78,9 +78,9 @@ On `pass`:
 - record narrow `scope.exclude` roots for distinguishable unrelated work inside an included root
 - record active ledger under `evidence.ledger`
 - for an epic, record its associated `notes/roadmap.md` under `evidence.roadmap`; tasks must omit it
-- mark ledger `Status` as `complete`
-- for an epic with a roadmap, change current queue item from `[-]` to `[x]`
-- for an epic, set roadmap `Active Epic.state` to `complete-pending-advance`
+- for a task or final epic pass with every supported top-level milestone explicitly complete, mark ledger `Status` as `complete`; for a final epic with roadmap change its queue item to `[x]` and `Active Epic.state` to `complete-pending-advance`
+- for an intermediate epic pass, keep ledger and roadmap active, capture the genuine snapshot after evidence writes, and route to the next eligible milestone only after this slice has crossed Verify and Review
+- never demote required regression checks or rewrite receipts to make an intermediate slice pass
 - set `Next Action` from supervisor mode: for `until-epic`, await commit or explicit abandonment before advance when a roadmap has queued or finalization work, otherwise await the next explicit workflow request; use commit for commit-authorized modes and candidate for candidate mode
 - after all ledger and roadmap writes, run bundled `scripts/capture_reviewed_change_set.py` with the exact ledger path
 - treat pass as actionable only when capture succeeds; on capture failure append a newer `pending` or `blocked` Review entry with the exact failure

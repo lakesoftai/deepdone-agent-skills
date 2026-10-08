@@ -306,7 +306,7 @@ def executable(root, check):
     return {'path': str(path), 'sha256': file_digest(path)}
 
 
-def fingerprint(root, ledger, check, roadmap):
+def fingerprint(root, ledger, check, roadmap, *, allow_empty=False):
     found = {}
     excludes = [i['path'] for i in check['exclusions']]
     staged = snapshot.run(['git', 'ls-files', '--stage', '-z'], root, binary=True)
@@ -336,7 +336,7 @@ def fingerprint(root, ledger, check, roadmap):
         require(not evidence_path(rel, ledger, roadmap), f'evidence path cannot be a declared input: {rel}')
         visit(rel, item['role'])
     entries = sorted(found.values(), key=lambda e: e['path'])
-    require(any(e['kind'] == 'file' for e in entries), 'input scope contains no files')
+    require(allow_empty or any(e['kind'] == 'file' for e in entries), 'input scope contains no files')
     return {'sha256': sha(canonical(entries)), 'entries': entries}
 
 
@@ -689,22 +689,28 @@ def source_tree(root, ledger, roadmap, check, current, tree, allowed_changes=Non
         require(sha(blob.stdout) == actual[path]['sha256'], message + ' (content; filtered materialization requires exact bytes)')
 
 
-def validate(root, ledger, *, text=None, owned=None, tree=None):
+def assess(root, ledger, *, text=None, owned=None, tree=None):
     root = root.resolve()
     try:
         text = text if text is not None else read_bytes(safe(root, ledger)).decode('utf-8')
         record = work_unit.load(root, ledger, text=text)
+        if not contract_span(text):
+            return {'state': 'absent', 'errors': ['verification contract: missing verification contract; explicitly migrate and run readiness checks']}
         contract = read_contract(text, ledger)
         current, definitions = inventory(root, ledger, contract)
         work_unit.bind_checks(record, current['checks'], current['roadmap'])
         receipts = validate_history(root, ledger, contract, definitions)
+        states = []
         errors = [f'pending verification attempt: {a["check"]}/{a["id"]}' for a in contract['attempts'] if a['status'] == 'pending']
+        if errors:
+            states.append('pending')
         for check in current['checks']:
             if not check['required']:
                 continue
             key = definition(check)
             attempts = [a for a in contract['attempts'] if a['check'] == check['id'] and a['definition'] == key and a['purpose'] == 'readiness']
             if not attempts:
+                states.append('missing')
                 errors.append(f'{check["id"]}: missing readiness attempt')
                 continue
             latest = attempts[-1]
@@ -712,14 +718,19 @@ def validate(root, ledger, *, text=None, owned=None, tree=None):
                 continue
             receipt = receipts[latest['id']]
             if receipt['outcome'] != 'completed' or receipt['exit_code'] != 0:
+                states.append('failed')
                 errors.append(f'{check["id"]}: latest readiness outcome {receipt["outcome"]}, exit {receipt.get("exit_code")}')
                 continue
+            stale = False
             try:
                 require(not receipt['error'] and all(s['complete'] for s in receipt['output'].values()), 'incomplete output capture')
                 require(receipt['git_before'] == receipt['git_after'], 'check changed HEAD or real index')
                 require(receipt['before'] == receipt['after'], 'inputs changed during execution')
                 working_directory(root, check)
                 actual = fingerprint(root, ledger, check, current['roadmap'])
+                if actual != receipt['after'] or executable(root, check) != receipt['tool']:
+                    stale = True
+                    states.append('stale')
                 require(actual == receipt['after'], 'stale verification inputs')
                 require(executable(root, check) == receipt['tool'], 'stale executable context')
                 if owned is not None:
@@ -727,10 +738,17 @@ def validate(root, ledger, *, text=None, owned=None, tree=None):
                 if tree is not None:
                     source_tree(root, ledger, current["roadmap"], check, actual, tree)
             except (OSError, ValueError) as exc:
+                if not stale:
+                    states.append('invalid')
                 errors.append(f'{check["id"]}: {exc}')
-        return errors
+        state = next((s for s in ('invalid', 'pending', 'failed', 'stale', 'missing') if s in states), 'pass')
+        return {'state': state, 'errors': errors}
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        return [f'verification contract: {exc}']
+        return {'state': 'invalid', 'errors': [f'verification contract: {exc}']}
+
+
+def validate(root, ledger, *, text=None, owned=None, tree=None):
+    return assess(root, ledger, text=text, owned=owned, tree=tree)['errors']
 
 
 def main():

@@ -140,23 +140,42 @@ Apply the [task contract](task-contract.md) for shared selection, acceptance bin
 
 ## Classification Precedence
 
-Use first matching rule:
+Repository classification and action admission are separate. `scripts/inspect_deepdone_state.py --route` exposes the executable contract in `scripts/routing.py`; the default inspector remains compatible. Read `required_phase`, `required_action`, `admitted_action`, and `stop_reason`, not a state label as permission.
 
-1. `blocked_needs_user`: STOP file, ambiguous active work, unexpected dirty files, missing acceptance, risky judgment, missing required authorization, or no safe progress.
-2. `needs_intake`: non-trivial requirements exist and no suitable ledger exists.
-3. `needs_resume`: one recoverable durable-state mismatch exists.
-4. `needs_advance_roadmap`: user invoked advance, or a later supervisor run finds a reviewed complete epic with a committed clean review snapshot and unchanged evidence that must activate queued work or finalize roadmap completion.
-5. `needs_tech_decision`: next milestone has an unresolved material or version-sensitive choice.
-6. `ready_to_implement`: exactly one milestone is next with known acceptance and verification.
-7. `needs_verification`: implement or fixup changed code. This transition is mandatory even when the phase ran fresh feedback checks; Verify may reuse only eligible current readiness receipts, never feedback promotion. See [verification contract](verification-contract.md).
-8. `needs_review`: latest implementation is verified and latest review is absent, pending, or stale.
-9. `needs_review_fix`: latest review is `fail` with accepted local findings.
-10. `ready_for_commit_candidate`: user requested a candidate or mode is `until-commit-candidate`, and review passed.
-11. `ready_to_commit`: user requested commit or mode is `until-commit` or `end-to-end`, and all gates pass.
-12. `ready_for_pr`, `needs_ci_review`, or `ready_to_archive`: user explicitly requested that lifecycle action and its gates pass.
-13. `complete`: no active or queued work and no blocking loop remains.
+Resolve dependencies in this order:
 
-A classification describes repository state. It never grants authorization.
+1. STOP, ambiguous selection, unknown ownership or malformed/pending applicable evidence prevents automatic progress. Missing initial receipts alone do not.
+2. No selected work plus requirements needs Plan. A valid committed task is terminal; an associated completed epic may enter a later Advance. Historical epic terminal validation remains supported.
+3. Changed Implement/Fixup owes Verify before another milestone, even if Implement obtained an eligible readiness receipt. Verify may validate and reuse it, never promote feedback.
+4. Failed verification needs analysis or one accepted obvious local repair. Stale readiness needs Verify. Fresh Verify with absent/pending/stale Review needs Review before further implementation.
+5. Applicable failed Review with accepted local findings needs Fixup; consequential or unaccepted findings need Decide. Changed Fixup returns to Verify and Review.
+6. An initial plan with acceptance, initial pending Review, no attempts and no attributable source changes may enter Implement. Otherwise ambiguous progress needs one bounded Sync; inspected incomplete progress may resume Implement.
+7. A valid intermediate epic Review permits the next milestone while epic/roadmap remain active. Only all explicitly complete milestones plus final passing Review permit completion. Final uncommitted work is ready for candidate preparation.
+8. Apply requested-phase compatibility, mode budget and original action authority. A mode stop leaves repository readiness intact. Candidate and PR draft need no commit/push/create authority. Actual commit and external lifecycle actions keep their existing gates.
+
+A classification describes repository state. It never grants authorization. A decision about a future milestone does not block safe current Verify.
+
+### Transient routing context
+
+Use `--context <explicit-json-file>` only when context is needed; the helper never creates or updates it. Keep equivalent context in the supervisor conversation. Allowed fields:
+
+- `requirements`: nonempty intake text.
+- `scope`: inspected epic `{"include":["src","tests"],"exclude":[]}` when no inventory provides scope. Tasks use their canonical scope. This declares ownership; it does not certify implementation.
+- `resolution`: `{"token":"<observation_token>","slice":"<task ID or milestone title>","stage":"ready-to-start|implementation-in-progress|implementation-ready","basis":"<inspected requirement/source/diff facts>"}`.
+- `decision`: the same token/slice/basis fields, with `need` equal to `analysis`, `user`, `future` or `none` instead of stage.
+- `findings`: the same token/slice/basis fields, with `disposition` equal to `local`, `decision` or `unaccepted` instead of stage. Local means an inspected, accepted, obvious repair, not blanket permission to change code.
+- `outcomes`: ordered objects with `unit` (selected identity), `slice`, `token`, `phase`, `action`, `result` (`pass|fail|blocked|changed|unchanged`), and the returned `reason`. Record what actually happened, after observing the resulting source/contract. Receipts alone are not phase outcomes.
+- `target`: pin the until-milestone task/slice once, before executing. Earlier slices cannot satisfy a later target.
+
+The token binds selected identity/path, relevant record requirements, scope, current definitions and source bytes/kinds/modes. Update stale semantic resolutions after inspection, never simply copy a new token onto an old judgment. Retain historical outcomes across token/slice changes: consumed phase and repair budgets never reset. Receipt appends and Review bookkeeping do not erase obligations. Context is an audited supervisor declaration, not independent proof of judgment. Unknown fields and malformed/inapplicable declarations stop with structured errors.
+
+Ambiguous resume needs Sync to inspect requirements, source, diff and complete evidence. Return an applicable resolution or a precise blocker. Resolve repository-answerable questions directly. Repeating the same phase/reason/observation without progress stops.
+
+Epic automation parses unique top-level milestone titles with `[ ]` queued, `[-]` active, `[x]` complete or `[!]` blocked, nested `acceptance` and comma-separated `depends on` titles (`none` allowed). Every top-level entry counts, including verification work. Resolve an owed slice's gates first, then a unique dependency-consistent active entry or first eligible queued entry in ledger order. Never skip an earlier blocked entry. Missing/ambiguous structure needs reconciliation; it is not completion. Legacy display and terminal validation remain separate from automation certainty.
+
+### Admission interface
+
+`--mode <mode>` defaults to `one-step`. `--requested` accepts a phase or precise `candidate`, `commit`, `pr-draft`, `pr-create`, `ci`, or `verification-repair` action. `--authority '{"commit":true,"push":false}'` carries only original exact user authority/denial; never manufacture grants from repository evidence or a caller's preference. Commit modes grant only local commit unless explicitly denied. Phase-specific preconditions still apply immediately before execution.
 
 ## Canonical Transitions
 

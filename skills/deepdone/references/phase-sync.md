@@ -117,3 +117,7 @@ Return:
 - state summary
 - drift or mismatch notes
 - next action
+
+## Bounded progress resolution
+
+For ambiguous implementation stage, inspect selected requirements, source/diff, milestones and complete evidence, then return a token-bound transient progress resolution (see state-machine.md), or the precise missing fact. Do not ask the user for repository-answerable facts. Preserve earlier outcomes and their consumed budgets. Receipt/Review bookkeeping alone does not require another Sync. Never repeat unchanged Sync without a resolution or blocker.

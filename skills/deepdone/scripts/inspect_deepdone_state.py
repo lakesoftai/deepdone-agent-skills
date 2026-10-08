@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Inspect DeepDone repository state and print JSON.
 
-This script intentionally does not decide the final next step. It gathers stable
-signals for the single public DeepDone skill.
+Default output gathers stable signals. Opt-in routing separates observations,
+semantic context, dependency precedence and action admission.
 """
 
 from __future__ import annotations
@@ -127,12 +127,7 @@ def latest_review_lines(ledger_text: str, limit: int = 12) -> list[str]:
 
 
 def latest_review_result(ledger_text: str) -> str:
-    result = "pending"
-    for line in latest_review_lines(ledger_text, limit=100):
-        match = re.match(r"^(?:[-*]\s*)?result:\s*(pending|pass|fail|blocked)\s*$", line, flags=re.IGNORECASE)
-        if match:
-            result = match.group(1).lower()
-    return result
+    return committed.latest_review_entry(ledger_text).get('result', 'pending')
 
 
 def unfinished_milestones(ledger_text: str) -> list[str]:
@@ -182,6 +177,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root', nargs='?', default='.')
     work_unit.add_selectors(parser)
+    parser.add_argument('--route', action='store_true', help='include deterministic routing')
+    parser.add_argument('--context', help='explicit transient JSON context file; never written')
+    parser.add_argument('--mode', default='one-step')
+    parser.add_argument('--requested', help='requested phase or precise action')
+    parser.add_argument('--authority', default='{}', help='JSON original exact user grants/denials')
     args = parser.parse_args()
     start = Path(args.root).resolve()
     root = git_root(start)
@@ -262,6 +262,17 @@ def main() -> int:
         "warnings": warnings,
     }
 
+    if args.route:
+        import routing
+        try:
+            ctx = json.loads(Path(args.context).read_text()) if args.context else {}
+            facts = routing.observe(root, task=args.task, ledger=args.ledger, ctx=ctx)
+            data['routing_observation'] = facts
+            data['routing'] = routing.route(facts, ctx, mode=args.mode, requested=args.requested,
+                                            authority=json.loads(args.authority))
+        except (OSError, ValueError, TypeError) as exc:
+            data['routing'] = {'state': 'context_error', 'admitted_action': None,
+                               'stop_reason': 'invalid_context', 'errors': [str(exc)]}
     print(json.dumps(data, indent=2, sort_keys=True))
     return 0
 

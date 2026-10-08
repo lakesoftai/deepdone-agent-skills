@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -185,20 +186,49 @@ def grade_probe(root: Path, state: dict[str, object]) -> list[str]:
     return errors
 
 
-def seed_intake(root: Path) -> dict[str, object]:
+def semantic_index(root: Path) -> str:
+    return git(root, "ls-files", "--stage", "-z").stdout
+
+
+def tracked_source(root: Path) -> dict[str, object]:
+    result = {}
+    for name in git(root, 'ls-files', '-z').stdout.split('\0'):
+        if name and not commit_progress.is_local_only(name):
+            path = root / name
+            result[name] = [path.lstat().st_mode, hashlib.sha256(path.read_bytes()).hexdigest()] if path.is_file() else None
+    return result
+
+
+def seed_intake(root: Path, kind: str = 'epic') -> dict[str, object]:
     write(root / "README.md", "# Intake fixture\n")
-    return {"base": commit_all(root, "evaluation base")}
+    base = commit_all(root, "evaluation base")
+    return {"base": base, "kind": kind, "index": semantic_index(root),
+            "source": tracked_source(root)}
 
 
 def grade_intake(root: Path, state: dict[str, object]) -> list[str]:
-    errors: list[str] = []
-    ledgers = list((root / "notes/epics").glob("*.md")) if (root / "notes/epics").exists() else []
-    if len(ledgers) != 1:
-        errors.append(f"expected one ledger, found {len(ledgers)}")
-    elif "result: pending" not in ledgers[0].read_text(encoding="utf-8"):
-        errors.append("new ledger lacks pending Review")
-    if (root / "src/greet.py").exists():
-        errors.append("one-step intake implemented code")
+    errors = grade_no_commit(root, state)
+    kind = state['kind']
+    tasks = list((root / '.deepdone/tasks').glob('*.md'))
+    epics = list((root / 'notes/epics').glob('*.md'))
+    records = tasks if kind == 'task' else epics
+    if len(records) != 1:
+        errors.append(f"expected one {kind}, found {len(records)}")
+    else:
+        try:
+            record = work_unit.load(root, records[0].relative_to(root).as_posix(), kind)
+            review = commit_progress.latest_review_entry(record['text'])
+            if record['status'] != 'active' or review.get('result') != 'pending' or review.get('reviewed-at') != 'not-run':
+                errors.append('intake requires active status and initial pending Review')
+        except (OSError, ValueError) as exc:
+            errors.append(f'invalid intake metadata: {exc}')
+    if (kind == 'task' and epics) or (kind == 'epic' and tasks) or (root / 'notes/roadmap.md').exists():
+        errors.append('intake created extra hierarchy')
+    if tracked_source(root) != state['source']:
+        errors.append('planning-only intake changed tracked source')
+    changes = commit_progress.parse_status_z(root)
+    if any(not commit_progress.is_local_only(item.path) for item in changes):
+        errors.append('planning-only intake changed source')
     return errors
 
 
@@ -215,7 +245,7 @@ def seed_active(root: Path, *, roadmap: bool = False) -> dict[str, object]:
             "- [ ] Next Epic\n\n## Active Epic\n\n"
             "- name: Current Epic\n- ledger: notes/epics/current.md\n- state: active\n\n## Status\n\nactive\n",
         )
-    return {"base": commit_all(root, "evaluation base")}
+    return {"base": commit_all(root, "evaluation base"), "index": semantic_index(root)}
 
 
 def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
@@ -227,6 +257,7 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
         work_unit.load(root, record_path, "task" if is_task else "epic")
     except (OSError, UnicodeError, ValueError) as exc:
         return [f"ledger evidence could not be read: {type(exc).__name__}: {exc}"]
+    errors.extend(grade_no_commit(root, state))
     # Load src.calc as a package module from the fixture's explicit import root.
     check = (
         "import os, sys\n"
@@ -283,7 +314,7 @@ def seed_task(root: Path) -> dict[str, object]:
           '# Calculator task\n\n## Task\n\n```json\n' + json.dumps(task, indent=2) + '\n```\n\n'
           '## Verification Log\n\nNo executions yet.\n\n## Review\n\n- reviewed-at: not-run\n  result: pending\n\n'
           '## Open Loops\n\nnone\n\n## Next Action\n\nImplement subtract and verify both operations.\n\n## Status\n\nactive\n')
-    return {'base': commit_all(root, 'evaluation base'), 'kind': 'task'}
+    return {'base': commit_all(root, 'evaluation base'), 'kind': 'task', 'index': semantic_index(root)}
 
 def seed_review_fix(root: Path) -> dict[str, object]:
     write(root / "src/auth.py", "def allowed(role):\n    return role == 'admin'\n")
@@ -324,11 +355,14 @@ def seed_reviewed(root: Path, *, roadmap: bool = False) -> dict[str, object]:
         roadmap_text = read_or_empty(root / "notes/roadmap.md").replace("- [-] Current", "- [x] Current").replace("- state: active", "- state: complete-pending-advance")
         write(root / "notes/roadmap.md", roadmap_text)
     manifest = capture_manifest(root, "notes/epics/current.md")
-    return {"base": base, "manifest": manifest, "roadmap": read_or_empty(root / "notes/roadmap.md")}
+    return {"base": base, "manifest": manifest, "index": semantic_index(root), "roadmap": read_or_empty(root / "notes/roadmap.md")}
 
 
 def grade_no_commit(root: Path, state: dict[str, object]) -> list[str]:
-    return [] if commit_count(root, str(state["base"])) == 0 else ["unexpected commit created"]
+    errors = [] if git(root, 'rev-parse', 'HEAD').stdout.strip() == state['base'] else ['unexpected commit created']
+    if 'index' in state and semantic_index(root) != state['index']:
+        errors.append('unexpected semantic index change')
+    return errors
 
 
 def grade_exact_commit(root: Path, state: dict[str, object]) -> list[str]:
@@ -372,7 +406,7 @@ def seed_archive_evidence(root: Path) -> dict[str, object]:
         "# Complete\n\n## Review\n\n- reviewed-at: now\n  result: pass\n  notes: clean\n\n"
         "## Status\n\ncomplete\nmerge/ref: https://example.test/pr/1\n",
     )
-    return {"base": commit_all(root, "evaluation base")}
+    return {"base": commit_all(root, "evaluation base"), "index": semantic_index(root)}
 
 
 def grade_no_archive(root: Path, state: dict[str, object]) -> list[str]:
@@ -403,9 +437,15 @@ def scenarios() -> list[Scenario]:
     return [
         Scenario("skill-discovery", "Use $deepdone-eval-probe. Perform its task exactly.", seed_probe, grade_probe),
         Scenario(
-            "natural-language-one-step-intake",
-            "Use DeepDone. Requirements: add src/greet.py with deterministic greet(name) and tests. Mode: one-step. Perform only this mode.",
+            "epic-one-step-intake",
+            "Use DeepDone. Requirements: plan an explicit single epic with two milestones for greeting behavior and regression coverage. Do not create a roadmap. Mode: one-step. Perform only this mode.",
             seed_intake,
+            grade_intake,
+        ),
+        Scenario(
+            "task-one-step-intake",
+            "Use DeepDone. Requirements: create a compact task for src/greet.py with deterministic greet(name) and tests. Mode: one-step. Plan only, no epic or roadmap.",
+            lambda root: seed_intake(root, 'task'),
             grade_intake,
         ),
         Scenario(
@@ -565,6 +605,7 @@ def run_trial(
     fixture.mkdir(parents=True)
     init_repo(fixture)
     state = scenario.seed(fixture)
+    state["index"] = semantic_index(fixture)
     final_path = trial_root / "final.json"
     command = adapter_command(agent, fixture, scenario.prompt, final_path, model, budget)
     try:

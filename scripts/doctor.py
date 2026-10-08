@@ -64,6 +64,7 @@ REQUIRED_INVARIANT_IDS = {
 INVARIANT_ID_RE = re.compile(r"^DD-[A-Z]+-[0-9]{3}$")
 
 HELPER_SCRIPTS = [
+    "skills/deepdone/scripts/routing.py",
     "skills/deepdone/scripts/work_unit.py",
     "skills/deepdone/scripts/verification.py",
     "evals/run_cross_agent.py",

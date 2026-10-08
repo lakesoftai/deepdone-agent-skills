@@ -201,7 +201,8 @@ class CrossAgentEvaluationTests(unittest.TestCase):
             names,
             {
                 "skill-discovery",
-                "natural-language-one-step-intake",
+                "epic-one-step-intake",
+                "task-one-step-intake",
                 "implement-verify-review",
                 "compact-task-candidate",
                 "review-fail-fix-verify-review",

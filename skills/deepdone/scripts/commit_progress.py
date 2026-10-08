@@ -509,6 +509,7 @@ def validate_reviewed_change_set(
     ledger_text: str,
     manifest_value: str | None,
     all_files: list[GitFile],
+    *, check_staging: bool = True,
 ) -> tuple[list[GitFile], list[GitFile], list[str], list[str], list[str], str | None, Path | None, set[str]]:
     errors: list[str] = []
     stale: list[str] = []
@@ -629,7 +630,7 @@ def validate_reviewed_change_set(
         errors.append(str(exc))
         staged_paths = set()
     staged_unowned = sorted(staged_paths.difference(owned))
-    if staged_unowned:
+    if staged_unowned and check_staging:
         errors.append("staged paths exist outside reviewed change set")
     dangerous = sorted(path for path in owned if is_dangerous(path))
     if dangerous:

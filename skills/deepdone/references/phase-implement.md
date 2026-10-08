@@ -105,14 +105,14 @@ Do not add status prose outside the ledger structure.
 
 ## Roadmap Interaction Rules
 
-If the current milestone finishes all planned implementation work:
+After any implementation change, including an intermediate milestone:
 
 - keep epic ledger `Status` as `active`
 - keep roadmap entry and `Active Epic.state` as `active`
 - set `Next Action` to run the Verify phase through `$deepdone`
 - do not mark the epic complete or advanceable
 
-Only the Review phase may mark an epic `complete` and roadmap state `complete-pending-advance` after a passing review.
+Only final passing Review with every top-level milestone explicitly complete may mark epic and roadmap complete. An intermediate Review pass keeps both active.
 
 If the epic is blocked:
 
@@ -141,8 +141,8 @@ If re-planning is needed, stop execution, record the issue, and return a recomme
 5. Run the smallest relevant checks first.
 6. Record actual results in `Verification Log`.
 7. Mark implementation milestone done only if its implementation acceptance check passed, or explicitly mark blocked.
-8. If more work remains in the epic, set one exact `Next Action` inside the next unfinished milestone.
-9. If implementation work is finished, keep epic active and route to verification.
+8. After changed implementation, set `Next Action` to Verify before another milestone.
+9. Keep epic active until final passing Review; record the changed outcome against this slice.
 
 Checks run here are implementation feedback, not the workflow verification gate. Route to the Verify phase after code changes even when these checks pass. Use purpose `feedback` for captured implementation checks. Verify requires an actual `readiness` execution; feedback cannot be promoted. See [verification contract](verification-contract.md).
 

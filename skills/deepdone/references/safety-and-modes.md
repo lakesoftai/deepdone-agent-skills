@@ -40,8 +40,8 @@ Read this reference before executing an internal phase or taking an externally v
 |---|---|---|
 | `one-step` | one phase transition | no |
 | `inspect-only` | classification only, no edits | no |
-| `until-milestone` | active milestone verified, blocked, or needs user | no |
-| `until-epic` | epic review passes, blocks, or needs user | no |
+| `until-milestone` | pinned task/slice crosses Verify, blocked, or needs user | no |
+| `until-epic` | final unit-completing Review passes, blocks, or needs user | no |
 | `until-review` | review produces pass, fail, or blocked | no |
 | `until-commit-candidate` | candidate prepared | no |
 | `until-commit` | local commit created or blocked | yes |
@@ -110,3 +110,9 @@ User-owned changes remain user-owned.
 ## Retired Invariants
 
 None.
+
+## Executable admission
+
+The opt-in inspector routing output separates required and admitted action. `inspect-only` admits zero phases. `one-step` consumes at most one outcome. `until-review` stops on the first Review outcome, including fail/blocked. `until-epic` may continue after an intermediate epic pass. `until-milestone` pins its target before execution; a bare receipt or another slice's old Verify cannot satisfy it. Valid applicable captured Review can establish that reviewed slice's prior Verify. Candidate mode stops after successful preparation without staging. Commit modes stop after local commit result or blocker, never Advance or external delivery.
+
+Keep at most one accepted automatic verification repair and one Review/Fixup/Verify/Review cycle across the entire run, even after source changes or another milestone. Preserve original exact grants and explicit denials. Missing future action permission must not block safe current inspection, candidate preparation or PR draft. Requested downstream phases cannot bypass prerequisites; one-step mismatch stops, while a loop may admit only the independently allowed prerequisite.
