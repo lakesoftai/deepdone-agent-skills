@@ -92,11 +92,34 @@ class ReviewedChangeSetTests(unittest.TestCase):
         )
         return ledger
 
+    def capture_ready(self, root: Path) -> Path:
+        import verification
+        ledger = "notes/epics/demo.md"
+        check = {
+            "id": "app-syntax", "acceptance": "Application source compiles", "required": True,
+            "argv": [sys.executable, "-I", "-B", "-c", "from pathlib import Path; compile(Path('src/app.py').read_bytes(), 'src/app.py', 'exec')"],
+            "cwd": ".", "inputs": [{"path": "src/app.py", "role": "source"}],
+            "exclusions": [], "env": {}, "context": "local-files", "timeout": 10,
+        }
+        verification.initialize(root, ledger, [check], "Migrate deterministic fixture to captured execution")
+        receipt = verification.run_check(root, ledger, check["id"])
+        self.assertEqual(receipt["exit_code"], 0, receipt)
+        return self.capture.capture(root, ledger)
+
     def prepare_review(self, root: Path, include: list[str] | None = None) -> Path:
         head = self.init_repo(root)
         (root / "src" / "app.py").write_text("VALUE = 2\n", encoding="utf-8")
         self.write_passing_ledger(root, head, include or ["src/"])
-        return self.capture.capture(root, "notes/epics/demo.md")
+        return self.capture_ready(root)
+
+    def test_capture_requires_explicit_verification_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            head = self.init_repo(root)
+            (root / "src/app.py").write_text("VALUE = 2\n")
+            self.write_passing_ledger(root, head, ["src/"])
+            with self.assertRaisesRegex(ValueError, "verification contract"):
+                self.capture.capture(root, "notes/epics/demo.md")
 
     def run_commit(self, root: Path, manifest: Path, *extra: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -168,7 +191,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
                 ledger.write_text(ledger.read_text().replace(
                     "- command: `python3 -m unittest`\n  result: pass\n  notes: ok", history,
                 ))
-                manifest = self.capture.capture(root, "notes/epics/demo.md")
+                manifest = self.capture_ready(root)
                 (root / "scratch.txt").write_text("unrelated user work\n")
                 index_before = (root / ".git/index").read_bytes()
                 result = self.run_candidate(root, manifest)
@@ -176,7 +199,14 @@ class ReviewedChangeSetTests(unittest.TestCase):
                 match = re.search(r"## JSON\s+```json\n(.*?)\n```", result.stdout, re.DOTALL)
                 self.assertIsNotNone(match, result.stdout)
                 candidate = json.loads(match.group(1))
-                errors = candidate["commit_gate_errors"]
+                self.assertEqual(candidate["commit_gate_errors"], [], candidate)
+                # Historical flat-record parsing remains strict; explicit migration makes it archival.
+                import commit_progress
+                errors = commit_progress.commit_gate_errors(
+                    "notes/epics/demo.md", None, ledger.read_text(),
+                    commit_progress.latest_verification_lines(ledger.read_text()),
+                    commit_progress.review_lines(ledger.read_text()), [],
+                )
                 if blocker == "malformed":
                     self.assertIn("verification log lacks structured result markers", errors)
                 elif blocker == "failing":
@@ -229,7 +259,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
                 },
             )
 
-            manifest = json.loads(self.capture.capture(root, "notes/epics/demo.md").read_text(encoding="utf-8"))
+            manifest = json.loads(self.capture_ready(root).read_text(encoding="utf-8"))
 
             self.assertEqual(
                 {item["role"] for item in manifest["evidence"]},
@@ -245,7 +275,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             self.write_passing_ledger(root, head, ["../outside"])
 
             with self.assertRaisesRegex(ValueError, "escapes repository"):
-                self.capture.capture(root, "notes/epics/demo.md")
+                self.capture_ready(root)
 
     def test_capture_handles_rename_deletion_symlink_binary_and_spaces(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -265,7 +295,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             os.chmod(root / "src/app.py", 0o755)
             self.write_passing_ledger(root, head, ["src/"])
 
-            manifest = json.loads(self.capture.capture(root, "notes/epics/demo.md").read_text(encoding="utf-8"))
+            manifest = json.loads(self.capture_ready(root).read_text(encoding="utf-8"))
             changed = set(
                 git(
                     root,
@@ -305,7 +335,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             self.write_passing_ledger(root, head, ["src/"])
 
             with self.assertRaisesRegex(ValueError, "rename crosses review include boundary"):
-                self.capture.capture(root, "notes/epics/demo.md")
+                self.capture_ready(root)
 
     def test_capture_does_not_change_head_or_real_index(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -317,7 +347,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             before_index = git(root, "write-tree").stdout.strip()
             self.write_passing_ledger(root, head, ["src/"])
 
-            self.capture.capture(root, "notes/epics/demo.md")
+            self.capture_ready(root)
 
             self.assertEqual(git(root, "rev-parse", "HEAD").stdout.strip(), head)
             self.assertEqual(git(root, "write-tree").stdout.strip(), before_index)
@@ -333,7 +363,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
                 (generated / f"file-{index:04d}.txt").write_text(f"{index}\n", encoding="utf-8")
             self.write_passing_ledger(root, head, ["generated/"])
 
-            manifest_path = self.capture.capture(root, "notes/epics/demo.md")
+            manifest_path = self.capture_ready(root)
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             candidate = self.run_candidate(root, manifest_path)
 
@@ -532,7 +562,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             head = self.init_repo(root)
             (root / "secret.pem").write_text("not-a-real-secret\n", encoding="utf-8")
             self.write_passing_ledger(root, head, ["secret.pem"])
-            manifest = self.capture.capture(root, "notes/epics/demo.md")
+            manifest = self.capture_ready(root)
 
             result = self.run_commit(root, manifest)
 
@@ -550,7 +580,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             base = git(root, "rev-parse", "HEAD").stdout.strip()
             git(root, "mv", "src/old.txt", "src/new name.txt")
             self.write_passing_ledger(root, base, ["src/"])
-            manifest = self.capture.capture(root, "notes/epics/demo.md")
+            manifest = self.capture_ready(root)
 
             result = self.run_commit(root, manifest)
 
@@ -565,7 +595,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             new_file = root / "src/new [file]*.bin"
             new_file.write_bytes(b"\x00\xffreviewed")
             self.write_passing_ledger(root, base, ["src/"])
-            manifest = self.capture.capture(root, "notes/epics/demo.md")
+            manifest = self.capture_ready(root)
 
             result = self.run_commit(root, manifest)
 
@@ -610,7 +640,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
                     "roadmap": "notes/roadmap.md",
                 },
             )
-            manifest = self.capture.capture(root, "notes/epics/demo.md")
+            manifest = self.capture_ready(root)
             result = self.run_commit(root, manifest)
             self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -643,7 +673,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
                     "roadmap": "notes/roadmap.md",
                 },
             )
-            manifest = self.capture.capture(root, "notes/epics/demo.md")
+            manifest = self.capture_ready(root)
             result = self.run_commit(root, manifest)
             self.assertEqual(result.returncode, 0, result.stderr)
             command = [
@@ -706,7 +736,7 @@ class ReviewedChangeSetTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ValueError, "roadmap evidence"):
-                self.capture.capture(root, "notes/epics/demo.md")
+                self.capture_ready(root)
 
             manifest = root / ".deepdone/reviews" / f"{review_id}.json"
             ref = f"refs/deepdone/reviews/{review_id}"

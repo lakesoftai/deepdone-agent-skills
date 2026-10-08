@@ -16,6 +16,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 
 MANIFEST_SCHEMA_VERSION = 2
 REVIEW_ID_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]{7,127}$")
@@ -149,7 +153,7 @@ def latest_review_entry(ledger_text: str) -> dict[str, object]:
 
 
 def parse_status(root: Path) -> list[StatusRecord]:
-    proc = run(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"], root, binary=True)
+    proc = run(["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"], root, binary=True)
     if proc.returncode != 0:
         raise ValueError(proc.stderr.decode(errors="replace").strip())
     chunks = proc.stdout.split(b"\0")
@@ -184,8 +188,12 @@ def select_reviewed_records(
     exclude: list[str],
     evidence_paths: set[str],
 ) -> list[StatusRecord]:
+    from verification import local_artifact
+
     selected: list[StatusRecord] = []
     for record in records:
+        if local_artifact(record.path) or (record.old_path and local_artifact(record.old_path)):
+            continue
         logical_paths = {record.path}
         if record.old_path:
             logical_paths.add(record.old_path)
@@ -462,7 +470,11 @@ def write_manifest_atomic(path: Path, manifest: dict[str, object]) -> None:
 
 
 def capture(root: Path, ledger_value: str) -> Path:
+    import verification
+
     root = root.resolve()
+    if (root / ".deepdone/STOP").exists():
+        raise ValueError(".deepdone/STOP exists")
     ledger_rel = normalize_repo_path(root, ledger_value)
     ledger_path = root / ledger_rel
     try:
@@ -477,6 +489,10 @@ def capture(root: Path, ledger_value: str) -> Path:
     selected = select_reviewed_records(records, include, exclude, evidence_paths)
     selected_paths = {record.path for record in selected}
     selected_paths.update(record.old_path for record in selected if record.old_path)
+
+    errors = verification.validate(root, ledger_rel, text=ledger_text, owned=selected_paths)
+    if errors:
+        raise ValueError("; ".join(errors))
 
     tree = build_tree_from_worktree(root, base_head, selected_paths)
     created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

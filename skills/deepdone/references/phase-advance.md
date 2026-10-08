@@ -141,7 +141,7 @@ If no planning mode exists, perform the same compact checks in normal execution 
 
 1. Locate the roadmap.
 2. Verify the current active epic is complete with latest review result `pass`, or confirm there is no active epic yet.
-3. Prove reviewed Git snapshot is committed and clean and captured development evidence is unchanged.
+3. Prove reviewed Git snapshot is committed and clean, captured development evidence is unchanged, and the complete [verification contract](verification-contract.md) remains valid. Perform this check before intentional ledger/roadmap writes. Clean historical legacy compatibility is not receipt verification; removed new-format evidence cannot use it.
 4. Mark the completed epic entry `[x]` if needed.
 5. Select the next queued epic whose dependencies are satisfied.
 6. Create exactly one new epic ledger for that epic.

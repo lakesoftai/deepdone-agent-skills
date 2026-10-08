@@ -175,8 +175,18 @@ class CrossAgentEvaluationTests(unittest.TestCase):
                     manifest_path.unlink()
                     self.runner.git(root, "update-ref", "-d", manifest["review_ref"])
                     self.runner.write(root / "tests/test_calc.py", "# unrelated change\n")
-                    self.runner.write(root / "notes/epics/current.md", self.runner.passing_ledger(state["base"], ["tests/"]))
-                    self.runner.capture_manifest(root, "notes/epics/current.md")
+                    ledger = root / "notes/epics/current.md"
+                    ledger.write_text(ledger.read_text().replace("      - src/\n", ""))
+                    verification = self.runner.commit_progress.verification_evidence
+                    contract = verification.read_contract(ledger.read_text(), "notes/epics/current.md")
+                    current, _ = verification.inventory(root, "notes/epics/current.md", contract)
+                    check = current["checks"][0]
+                    check["inputs"] = [{"path": "tests", "role": "source"}]
+                    check["argv"] = [sys.executable, "-I", "-B", "-c", "compile(open('tests/test_calc.py').read(), 'test_calc', 'exec')"]
+                    verification.initialize(root, "notes/epics/current.md", [check], "Negative fixture reviews only tests")
+                    verification.run_check(root, "notes/epics/current.md", check["id"])
+                    script = root / ".agents/skills/deepdone/scripts/capture_reviewed_change_set.py"
+                    self.runner.run([sys.executable, str(script), "--ledger", "notes/epics/current.md"], root, check=True)
                 errors = self.runner.grade_lifecycle(root, state)
                 self.assertTrue(errors)
                 if mutation == "head":

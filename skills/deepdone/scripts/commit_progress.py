@@ -20,6 +20,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import capture_reviewed_change_set as review_snapshot  # noqa: E402
+import verification as verification_evidence  # noqa: E402
 
 
 MANIFEST_SCHEMA_VERSION = 2
@@ -45,6 +46,7 @@ ALLOWLISTED_DANGEROUS_PATTERNS = [
 ]
 
 LOCAL_ONLY_PATTERNS = [
+    re.compile(r"^\.deepdone/verification/"),
     re.compile(r"(^|/)\.deepdone/commit-candidate\.md$"),
     re.compile(r"(^|/)\.deepdone/reviews/[^/]+\.json$"),
 ]
@@ -97,7 +99,7 @@ def parse_status(lines: list[str]) -> list[GitFile]:
 
 
 def parse_status_z(root: Path) -> list[GitFile]:
-    code, out, err = run_bytes(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"], root)
+    code, out, err = run_bytes(["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"], root)
     if code != 0:
         raise RuntimeError(err.decode(errors="replace").strip())
     chunks = out.split(b"\0")
@@ -382,16 +384,20 @@ def commit_gate_errors(
     verification: list[str],
     review: list[str],
     open_loops: list[str],
+    root: Path | None = None,
 ) -> list[str]:
     errors: list[str] = []
     if not ledger_path or not ledger_text:
         errors.append("missing active ledger")
     if active_epic_state == "blocked":
         errors.append("active epic state is blocked")
-    # Candidate/message excerpts may be bounded; readiness always reads the full log.
+    # root=None retains the legacy parser API for historical diagnostics only.
+    # All production readiness callers supply root and validate execution receipts.
     history = section(ledger_text, "Verification Log", preserve_indent=True)
     evidence = history.splitlines() if history else verification
-    if not evidence:
+    if root is not None:
+        errors.extend(verification_evidence.validate(root, ledger_path or "", text=ledger_text))
+    elif not evidence:
         errors.append("missing verification log evidence")
     else:
         results = verification_results(evidence)
@@ -658,6 +664,9 @@ def validate_reviewed_change_set(
         errors.append("reviewed change-set path count does not match Git snapshot")
 
     errors.extend(validate_manifest_evidence(root, manifest))
+    errors.extend(verification_evidence.validate(root, ledger_path or "", text=ledger_text, owned=owned))
+    if any(verification_evidence.local_artifact(path) for path in owned):
+        errors.append("verification artifacts cannot be committed as reviewed source")
     if owned and base_head and review_tree:
         try:
             current_tree = review_snapshot.build_tree_from_worktree(root, base_head, owned)
@@ -785,7 +794,7 @@ def main() -> int:
     verification = latest_verification_lines(ledger_text, limit=3) if ledger_text else []
     review = review_lines(ledger_text) if ledger_text else []
     open_loops = latest_lines(ledger_text, "Open Loops") if ledger_text else []
-    gate_errors = commit_gate_errors(ledger_path, active_epic_state, ledger_text, verification, review, open_loops)
+    gate_errors = commit_gate_errors(ledger_path, active_epic_state, ledger_text, verification, review, open_loops, root=root)
 
     reviewed, excluded, manifest_errors, stale, staged_unowned, manifest_rel, manifest_path, owned = validate_reviewed_change_set(
         root, ledger_path, ledger_text, args.reviewed_change_set, all_files

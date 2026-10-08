@@ -31,12 +31,14 @@ from capture_reviewed_change_set import (  # noqa: E402
 )
 
 
+import verification  # noqa: E402
+
 MANIFEST_SCHEMA_VERSION = 2
 LEGACY_MANIFEST_SCHEMA_VERSION = 1
 
 
 def dirty_paths(root: Path) -> set[str]:
-    proc = run(["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"], root, binary=True)
+    proc = run(["git", "--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"], root, binary=True)
     if proc.returncode != 0:
         raise ValueError(proc.stderr.decode(errors="replace").strip())
     chunks = proc.stdout.split(b"\0")
@@ -164,8 +166,12 @@ def validate_committed_snapshot(
 
 def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
     root = root.resolve()
+    if (root / ".deepdone/STOP").exists():
+        raise ValueError(".deepdone/STOP exists")
     ledger_rel, entry, manifest_path, manifest = load_entry_and_manifest(root, ledger_value)
     all_dirty = dirty_paths(root)
+    ledger_text = (root / ledger_rel).read_text(encoding="utf-8")
+    new_evidence = verification.contract_span(ledger_text) is not None or (root / verification.namespace(ledger_rel)).exists()
 
     entry_scope = entry.get("scope")
     schema_v2_entry = (
@@ -174,12 +180,21 @@ def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
         and bool(entry.get("evidence"))
     )
     if manifest is None:
+        if new_evidence:
+            raise ValueError("schema-v2 review manifest is missing; verification contract requires intact review manifest")
         if schema_v2_entry:
             raise ValueError("schema-v2 review manifest is missing")
         if all_dirty:
             raise ValueError("legacy passing review cannot advance while repository is dirty")
         return [], []
     if manifest.get("schema_version") == LEGACY_MANIFEST_SCHEMA_VERSION:
+        if new_evidence:
+            raise ValueError("verification contract cannot use legacy manifest compatibility")
+        if schema_v2_entry:
+            raise ValueError("schema-v2 review entry cannot downgrade to a legacy manifest")
+        if manifest.get("ledger_path") != ledger_rel or manifest.get("review_id") != entry.get("review-id"):
+            raise ValueError("ambiguous historical manifest identity")
+        validate_evidence(root, manifest)
         if all_dirty:
             raise ValueError("legacy passing review cannot advance while repository is dirty")
         return [], []
@@ -189,6 +204,11 @@ def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
     reviewed = changed_paths(root, base_head, review_commit)
     if len(reviewed) != manifest.get("commit_path_count"):
         raise ValueError("review manifest path count does not match Git snapshot")
+    errors = verification.validate(root, ledger_rel, text=ledger_text, owned=reviewed) if new_evidence else []
+    if errors:
+        raise ValueError("; ".join(errors))
+    if not new_evidence and all_dirty:
+        raise ValueError("legacy passing review cannot advance while repository is dirty")
     dirty_reviewed = sorted(reviewed.intersection(all_dirty))
     validate_committed_snapshot(root, base_head, review_commit, review_tree, reviewed, all_dirty)
     return dirty_reviewed, sorted(reviewed)

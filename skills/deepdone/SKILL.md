@@ -146,6 +146,9 @@ Allow at most one automatic verification fix and one automatic review-fix cycle 
 
 Do not execute the same phase twice for the same unchanged reason.
 
+See [verification execution contract](references/verification-contract.md) when
+a phase declares, executes, or consumes readiness evidence.
+
 ## Durable State
 
 The routed phase owns normal roadmap and ledger edits defined by its reference.

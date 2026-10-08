@@ -105,7 +105,7 @@ Stop for:
 9. Return changed code to verification before review runs again.
 10. Return result block.
 
-Checks run during fixup prove the local repair only. They do not skip the Verify transition. Verify may reuse fresh complete evidence when scope and recency are clear.
+Checks run during fixup prove the local repair only. They do not skip the Verify transition. Use purpose `feedback` for captured fixup checks. Verify requires an actual `readiness` execution; feedback cannot be promoted. See [verification contract](verification-contract.md).
 
 ## Ledger Write Policy
 

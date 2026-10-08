@@ -151,7 +151,7 @@ If re-planning is needed, stop execution, record the issue, and return a recomme
 8. If more work remains in the epic, set one exact `Next Action` inside the next unfinished milestone.
 9. If implementation work is finished, keep epic active and route to verification.
 
-Checks run here are implementation feedback, not the workflow verification gate. Route to the Verify phase after code changes even when these checks pass. Verify may reuse fresh complete evidence instead of rerunning an identical command.
+Checks run here are implementation feedback, not the workflow verification gate. Route to the Verify phase after code changes even when these checks pass. Use purpose `feedback` for captured implementation checks. Verify requires an actual `readiness` execution; feedback cannot be promoted. See [verification contract](verification-contract.md).
 
 ## Done Rule
 

@@ -150,14 +150,14 @@ On `blocked`, mark epic and roadmap blocked and state exact unblock condition.
 
 ## Workflow
 
-1. Read full review scope and recent verification results.
+1. Read full review scope and the [verification contract](verification-contract.md). Validate every pinned reference and latest required readiness attempt. Judge inventory sufficiency, declared context, and exclusions.
 2. Check whether implementation matches stated milestone.
 3. Look for behavior regressions and hidden coupling.
 4. Inspect auth, data, config, and migration surfaces with extra skepticism.
 5. Check whether tests prove intended behavior.
 6. Classify each finding by severity.
 7. Append structured Review entry and update lifecycle state.
-8. On pass, capture exact reviewed Git snapshot and development evidence with bundled helper.
+8. On pass, capture exact reviewed Git snapshot and development evidence with bundled helper. Capture rejects stale receipts, broken artifact chains, or relevant dirty inputs outside reviewed ownership.
 9. Report findings first.
 
 ## Output

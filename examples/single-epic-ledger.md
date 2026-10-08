@@ -29,6 +29,10 @@ Make authentication failures return stable JSON errors without changing successf
 
 - none yet
 
+<!-- Summary-only example. Before new Review capture, initialize a real Verification
+Contract with scripts/verification.py init, execute required readiness checks,
+and keep the wrapper-generated references. Do not copy invented receipts. -->
+
 ## Verification Log
 
 - command: `pytest tests/test_auth_errors.py`

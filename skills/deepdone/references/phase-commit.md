@@ -54,7 +54,8 @@ Before preparing a commit candidate, inspect:
 - `git diff --stat`,
 - active roadmap if present,
 - active epic ledger,
-- latest `Verification Log`,
+- current `Verification Contract` and all referenced inventories/receipts,
+- `Verification Log` summaries,
 - latest `## Review` result, or legacy structured `review-result: pass|fail|blocked`,
 - `Open Loops`,
 - AGENTS instructions.
@@ -65,7 +66,9 @@ Before actual commit, all must be true:
 - no `.deepdone/STOP` file exists,
 - changed files are expected,
 - active ledger is current,
-- verification entries include `result: pass|fail|blocked`, and no failed or blocked check remains unaccepted,
+- every current required check has an eligible latest readiness receipt with matching current inputs,
+- the complete reference chain passes [verification contract](verification-contract.md) validation,
+- relevant dirty committable inputs belong to reviewed ownership,
 - latest review result is `pass`,
 - latest passing Review has `review-id`, `base-head`, `manifest`, compact `scope`, and recognized `evidence`,
 - schema-v2 reviewed change-set manifest validates against private review ref and current contents,
@@ -77,6 +80,10 @@ Before actual commit, all must be true:
 - no dangerous files are included.
 
 Read the latest `## Review` entry when present. For legacy ledgers without that section, accept the latest structured `review-result: pass|fail|blocked` evidence. Missing review evidence blocks actual commit.
+
+New capture/candidate/commit requires explicit migration of legacy logs. Historical
+passing strings cannot substitute for captured executions. Verification artifacts
+are local evidence even when unignored; staged artifacts block and are preserved.
 
 ## Dangerous Files
 
@@ -121,7 +128,7 @@ Before commit, harness:
 
 - rebuilds reviewed tree from current files through a temporary index
 - verifies ledger and optional roadmap filesystem hashes
-- rejects schema-v1 manifests for dirty work
+- rejects schema-v1 manifests for new commit readiness
 - copies exact reviewed tree entries into real index
 - checks real index tree equals reviewed tree
 - commits real index

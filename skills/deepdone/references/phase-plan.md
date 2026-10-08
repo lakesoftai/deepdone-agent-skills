@@ -205,7 +205,10 @@ Use structured verification entries:
   notes: focused auth test passed
 ```
 
-Allowed verification results: `pass`, `fail`, `blocked`.
+Allowed summary results: `pass`, `fail`, `blocked`. These are display history.
+At Verify, explicitly initialize the [verification contract](verification-contract.md)
+with acceptance checks and complete input scopes; never seed passing receipts
+or infer readiness from these planning examples.
 
 Initialize review state:
 

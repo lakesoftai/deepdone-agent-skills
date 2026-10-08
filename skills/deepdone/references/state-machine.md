@@ -99,7 +99,7 @@ Allowed results: `pending`, `pass`, `fail`, `blocked`.
 
 Latest entry wins. Missing `## Review` means `pending`. Add the section during review or sync when needed; do not require bulk migration.
 
-Legacy passing entries and schema-v1 manifests remain readable. They may describe completed work, but they cannot authorize an actual commit. Advance may accept them only when the repository is already clean so old completed work is not stranded.
+Legacy passing entries and schema-v1 manifests remain readable. They may describe completed work, but they cannot authorize an actual commit. Advance may accept them only when the repository is already clean and applicable manifest identity and development evidence validate. Missing identity/evidence is ambiguous and blocks. Removed or damaged new-format contracts cannot use historical compatibility.
 
 Markdown is the human review decision, compact scope declaration, and evidence-role record. It never lists every matched file.
 
@@ -144,7 +144,7 @@ Use first matching rule:
 4. `needs_advance_roadmap`: user invoked advance, or a later supervisor run finds a reviewed complete epic with a committed clean review snapshot and unchanged evidence that must activate queued work or finalize roadmap completion.
 5. `needs_tech_decision`: next milestone has an unresolved material or version-sensitive choice.
 6. `ready_to_implement`: exactly one milestone is next with known acceptance and verification.
-7. `needs_verification`: implement or fixup changed code. This transition is mandatory even when the phase ran fresh feedback checks; verify may reuse complete current evidence.
+7. `needs_verification`: implement or fixup changed code. This transition is mandatory even when the phase ran fresh feedback checks; Verify may reuse only eligible current readiness receipts, never feedback promotion. See [verification contract](verification-contract.md).
 8. `needs_review`: latest implementation is verified and latest review is absent, pending, or stale.
 9. `needs_review_fix`: latest review is `fail` with accepted local findings.
 10. `ready_for_commit_candidate`: user requested a candidate or mode is `until-commit-candidate`, and review passed.

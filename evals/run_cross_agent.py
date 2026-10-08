@@ -145,6 +145,15 @@ def passing_ledger(
 
 
 def capture_manifest(root: Path, ledger: str) -> str:
+    import verification
+    check = {
+        "id": "source-syntax", "acceptance": "Python source compiles", "required": True,
+        "argv": [sys.executable, "-I", "-B", "-c", "from pathlib import Path; files=list(Path('src').rglob('*.py')); assert files; [compile(p.read_bytes(), str(p), 'exec') for p in files]"],
+        "cwd": ".", "inputs": [{"path": "src", "role": "source"}],
+        "exclusions": [], "env": {}, "context": "local-files", "timeout": 10,
+    }
+    verification.initialize(root, ledger, [check], "Migrate deterministic evaluator fixture")
+    verification.run_check(root, ledger, check["id"])
     script = root / ".agents/skills/deepdone/scripts/capture_reviewed_change_set.py"
     result = run([sys.executable, str(script), "--ledger", ledger], root, check=True)
     return result.stdout.splitlines()[0].strip()
@@ -237,7 +246,7 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
             "notes/epics/current.md", None, ledger,
             commit_progress.latest_verification_lines(ledger),
             commit_progress.review_lines(ledger),
-            section(ledger, "Open Loops").splitlines(),
+            section(ledger, "Open Loops").splitlines(), root=root,
         ))
         validation = commit_progress.validate_reviewed_change_set(
             root, "notes/epics/current.md", ledger, None, commit_progress.parse_status_z(root),

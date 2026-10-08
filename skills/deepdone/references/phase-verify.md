@@ -45,55 +45,27 @@ Record discovery when it affects command choice:
 
 If discovery finds no runnable command, log a blocked entry with exact reason.
 
-## Mandatory Notes
+## Captured Readiness
 
-Record exact command and result.
-If something could not run, state exact blocker.
-Do not claim pass based on intent.
+Use the [verification execution contract](verification-contract.md). Declare the
+current required/advisory inventory, acceptance conditions, exact commands and
+complete input scope. Execute each required check through `scripts/verification.py`
+with purpose `readiness`. Diagnostic and implementation feedback do not substitute
+for an actual readiness execution. Reuse only an already eligible same-definition
+readiness receipt whose current inputs still match.
 
-Treat verification as the readiness gate. Fresh implementation checks may be reused only when their scope, command, result, and recency clearly cover current code. Otherwise rerun them.
+The helper records a pending attempt before launch and captures raw outcomes,
+input fingerprints, context, and bounded binary output. Run its `check` action to
+validate the complete chain. Missing contract/checks, invalid references, pending
+attempts, failure, or stale inputs block. Inspect specific blockers and preserve
+history. Review must still judge whether the inventory covers acceptance.
 
-## Ledger Writeback
-
-Append lines under `## Verification Log` such as:
-
-```md
-- command: `just test api-auth`
-  result: pass
-  notes: focused auth test passed
-- command: `uv run pytest tests/test_auth.py`
-  result: fail
-  notes: login fixture broken after schema change
-- command: `just lint`
-  result: blocked
-  notes: no `justfile` in repo
-```
-
-`result:` is required. Use only `pass`, `fail`, or `blocked`.
-
-Commit readiness reads the full history and uses the latest result for each
-exact command and recorded context. Optional flat fields such as `cwd`, `scope`,
-or `config` distinguish otherwise identical commands; every field other than
-`result` and `notes` participates in identity. Record context there or in the
-command itself, never only in notes. A matching successful rerun supersedes a
-failure or blocker; unrelated successes do not. Keep earlier entries intact.
-Missing results, duplicate fields, empty values, and malformed records block
-readiness. Candidate and commit-message excerpts show only the last three entries.
-
-The supported grammar is flat: start each record at column zero with
-`- command: <value>`, then indent each `key: <value>` field by exactly two spaces.
-Keys use lowercase letters, digits, underscores, or hyphens, starting with a
-letter, with no whitespace before the colon. Values must be nonempty and stay on
-one line. Nested fields, continuation lines, and block scalars (`|`, `>`, including
-their modifiers) are unsupported and block readiness. Single-line notes can
-contain text such as `result: fail`; that text is never parsed as another field.
-Validation preserves indentation; only display formatting may normalize it.
-
-This legacy format does not prove source freshness or enumerate all required
-checks. Confirm applicability before reusing results. All entries are readiness
-evidence: an expected failing reproduction is diagnostic evidence, not a readiness
-pass. Preserve it separately in the ledger's notes or Decisions and record the
-actual readiness rerun here. Typed reproduction receipts are not supported yet.
+Keep readable exact-command summaries in `## Verification Log`, using
+`result: pass|fail|blocked` for display. They are not readiness authority. For
+legacy ledgers, explicitly initialize the new contract with a migration reason,
+preserve old text, execute real checks, and obtain a new review. Never convert an
+old passing string into a receipt. See the contract for strict JSON shapes,
+unsupported context, generated exclusions, concurrency recovery, and limitations.
 
 ## Risk Triggers
 
@@ -110,10 +82,10 @@ Broaden verification when change touches:
 
 1. Discover command wrappers and package-level checks.
 2. Identify smallest convincing check.
-3. Run it.
+3. Declare the complete current check inventory and run required checks through the wrapper.
 4. Decide whether broader checks are needed.
 5. Run broader checks only where justified.
-6. Log every command and outcome with `result:`.
+6. Validate captured receipts and freshness; retain readable command summaries.
 7. If required checks pass, keep epic `Status: active` and set `Next Action` to run the Review phase through `$deepdone`.
 8. If a required check fails or blocks, record the issue in `Open Loops`, keep review pending, and set one exact fix or unblock action.
 9. State residual risk if coverage still incomplete.
