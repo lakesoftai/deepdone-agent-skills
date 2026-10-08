@@ -129,7 +129,7 @@ class RoutingTests(unittest.TestCase):
                     # Reuse canonical task text without allowing fixture seeding to alter baseline HEAD.
                     with tempfile.TemporaryDirectory() as other:
                         op=Path(other);self.task(op);runner.write(root/TASK,(op/TASK).read_text())
-                else:runner.write(root/'notes/epics/greet.md',runner.pending_ledger('Greeting','greet'))
+                else:runner.write(root/'notes/epics/greet.md',runner.pending_ledger('Greeting','greet').replace('## Decisions','- [ ] regression\n  - acceptance: existing behavior remains correct\n\n## Decisions'))
                 self.assertEqual(runner.grade_intake(root,state),[])
                 runner.write(root/'src/greet.py','early implementation')
                 self.assertIn('planning-only intake changed source',runner.grade_intake(root,state))

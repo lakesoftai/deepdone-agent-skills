@@ -24,6 +24,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import commit_progress  # noqa: E402
 import work_unit
+import routing
 
 SCHEMA_PATH = ROOT / "evals" / "result-schema.json"
 AGENTS = ("codex", "claude")
@@ -203,7 +204,7 @@ def seed_intake(root: Path, kind: str = 'epic') -> dict[str, object]:
     write(root / "README.md", "# Intake fixture\n")
     base = commit_all(root, "evaluation base")
     return {"base": base, "kind": kind, "index": semantic_index(root),
-            "source": tracked_source(root)}
+            "source": tracked_source(root), "milestones": 2 if kind == "epic" else None}
 
 
 def grade_intake(root: Path, state: dict[str, object]) -> list[str]:
@@ -217,6 +218,10 @@ def grade_intake(root: Path, state: dict[str, object]) -> list[str]:
     else:
         try:
             record = work_unit.load(root, records[0].relative_to(root).as_posix(), kind)
+            if kind == 'epic':
+                rows = routing.milestones(record['text'])
+                if len(rows) != state['milestones'] or any(row['marker'] != ' ' for row in rows):
+                    errors.append('intake requires the requested planned milestone count')
             review = commit_progress.latest_review_entry(record['text'])
             if record['status'] != 'active' or review.get('result') != 'pending' or review.get('reviewed-at') != 'not-run':
                 errors.append('intake requires active status and initial pending Review')

@@ -168,23 +168,30 @@ def observe(root, *, task=None, ledger=None, ctx=None):
         inventory = v.inventory(root, path, contract)[0] if contract else None
         if record['kind'] == 'task':
             w.require('scope' not in ctx, 'task scope comes from its record')
-            scope = record['task']['scope']
+            scopes = [record['task']['scope']]
+        elif 'scope' in ctx:
+            scopes = [ctx['scope']]
         elif inventory:
-            scope = {'include': sorted({i['path'] for c in inventory['checks'] for i in c['inputs'] if i['role'] == 'source'}), 'exclude': []}
-            if 'scope' in ctx:
-                scope = ctx['scope']
+            # Exclusions belong to a check, not the union of all source inputs.
+            scopes = [{'include': [i['path'] for i in c['inputs'] if i['role'] == 'source'],
+                       'exclude': [e['path'] for e in c['exclusions']]}
+                      for c in inventory['checks'] if any(i['role'] == 'source' for i in c['inputs'])]
         else:
-            scope = ctx.get('scope') or entry.get('scope')
-        if not scope or not scope.get('include'):
+            scopes = [entry.get('scope')]
+        if not scopes or any(not scope or not scope.get('include') for scope in scopes):
             facts['errors'].append('ownership_unknown: declare inspected epic source scope')
             return facts
-        projection, owned = source_observation(root, record, scope)
+        projection, owned = [], set()
+        for scope in scopes:
+            observed, changed = source_observation(root, record, scope)
+            projection.append(observed)
+            owned.update(changed)
         facts['changed'] = bool(owned)
         if inventory:
             assessment = v.assess(root, path, owned=owned)
             facts['readiness'], facts['readiness_errors'] = assessment['state'], assessment['errors']
         relevant = record['task'] if record['kind'] == 'task' else {key: w.section(text, key) for key in ('Summary', 'Constraints', 'Milestones', 'Decisions')}
-        facts['token'] = v.sha(v.canonical({'unit': {'path': path, 'identity': record['identity']}, 'contract': relevant, 'scope': scope,
+        facts['token'] = v.sha(v.canonical({'unit': {'path': path, 'identity': record['identity']}, 'contract': relevant, 'scope': scopes,
                                           'definitions': inventory['checks'] if inventory else None, 'source': projection}))
         # Status, receipt references and Review bookkeeping are intentionally not semantic progress.
         facts['initial'] = (not owned and not (contract and contract['attempts']) and
@@ -320,7 +327,7 @@ def admit(facts, decision, ctx, *, mode='one-step', requested=None, authority=No
         stop = 'commit_outcome'
     elif decision['state'] == 'blocked_needs_user':
         stop = decision['reason']
-    if not stop and action == 'candidate' and (requested == 'commit' or mode in {'until-commit', 'end-to-end'}):
+    if not stop and action == 'candidate' and ((requested == 'commit' and mode == 'one-step') or mode in {'until-commit', 'end-to-end'}):
         action = 'commit'
     if not stop and decision['state'] == 'complete':
         if requested in {'pr', 'pr-draft', 'pr-create', 'ci'}:
