@@ -115,12 +115,12 @@ class VerificationTests(unittest.TestCase):
     def test_pending_conflict_abandon_and_competing_writer(self):
         self.ready()
         original = v.stream_command
-        def conflict(root, check):
+        def conflict(root, check, tool=None):
             self.assertEqual(self.contract()['attempts'][-1]['status'], 'pending')
             self.errors('pending')
             with self.assertRaisesRegex(ValueError, 'already active'):
                 self.run_check()
-            result = original(root, check)
+            result = original(root, check, tool)
             path = root / LEDGER
             path.write_text(path.read_text().replace('# Demo', '# Demo\nConcurrent user edit', 1))
             return result
@@ -355,8 +355,8 @@ class VerificationTests(unittest.TestCase):
         path = self.root / reference['path']
         raw = path.read_bytes()
         original = v.stream_command
-        def change_inventory(root, check):
-            result = original(root, check)
+        def change_inventory(root, check, tool=None):
+            result = original(root, check, tool)
             path.write_bytes(raw + b' ')
             return result
         with patch.object(v, 'stream_command', side_effect=change_inventory):

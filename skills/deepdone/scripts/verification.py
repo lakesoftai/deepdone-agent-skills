@@ -285,7 +285,10 @@ def executable(root, check):
     if '/' in argv0:
         path = Path(argv0) if Path(argv0).is_absolute() else root / check['cwd'] / argv0
     else:
-        found = shutil.which(argv0, path=environment(check)['PATH'])
+        cwd = safe(root, check['cwd'], dot=True)
+        search = os.pathsep.join(str(Path(item) if Path(item).is_absolute() else cwd / item)
+                                 for item in environment(check)['PATH'].split(os.pathsep))
+        found = shutil.which(argv0, path=search)
         if found is None:
             raise FileNotFoundError(f'executable unavailable: {argv0}')
         path = Path(found)
@@ -349,14 +352,15 @@ def kill_group(process):
         process.kill()
 
 
-def stream_command(root, check):
+def stream_command(root, check, tool=None):
     output = {name: {'bytes': 0, 'sha256': '', 'excerpt': '', 'truncated': False, 'complete': True} for name in ('stdout', 'stderr')}
     hashes = {name: hashlib.sha256() for name in output}
     excerpts = {name: bytearray() for name in output}
     outcome, code, problem = 'completed', None, ''
     process = None
     try:
-        process = subprocess.Popen(check['argv'], cwd=safe(root, check['cwd'], dot=True), env=environment(check), stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        tool = tool if tool is not None else executable(root, check)
+        process = subprocess.Popen(check['argv'], executable=tool['path'], cwd=safe(root, check['cwd'], dot=True), env=environment(check), stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         deadline = time.monotonic() + check['timeout']
         with selectors.DefaultSelector() as selector:
             for name in output:
@@ -452,21 +456,21 @@ def run_check(root, ledger, check_id, purpose='readiness'):
         try:
             receipt['git_before'] = git_context(root)
             receipt['before'] = fingerprint(root, ledger, check, current['roadmap'])
-            try:
-                receipt['tool'] = executable(root, check)
-            except OSError as exc:
-                receipt['outcome'] = 'spawn-error'
-                receipt['error'] = str(exc)
+            receipt['outcome'] = 'spawn-error'
+            receipt['tool'] = executable(root, check)
+            receipt['outcome'] = 'capture-error'
             require(not (root / '.deepdone/STOP').exists(), '.deepdone/STOP exists before launch')
-            receipt['outcome'], receipt['exit_code'], receipt['output'], receipt['error'] = stream_command(root, check)
+            receipt['outcome'], receipt['exit_code'], receipt['output'], receipt['error'] = stream_command(root, check, receipt['tool'])
             receipt['after'] = fingerprint(root, ledger, check, current['roadmap'])
             receipt['git_after'] = git_context(root)
             if receipt['tool'] is not None:
                 require(receipt['tool'] == executable(root, check), 'executable changed during check')
         except (OSError, ValueError) as exc:
-            receipt['outcome'] = 'capture-error'
+            if receipt['outcome'] != 'spawn-error':
+                receipt['outcome'] = 'capture-error'
             receipt['error'] = str(exc)
         receipt['ended'] = now()
+        validate_execution(receipt)
         attempt['receipt'] = immutable(root, ledger, 'receipts', receipt)
         inventory(root, ledger, contract)
         attempt['status'] = 'final'
@@ -510,6 +514,50 @@ def validate_fingerprint(value):
     require(sha(canonical(value['entries'])) == value['sha256'], 'fingerprint digest mismatch')
 
 
+def validate_execution(receipt):
+    shape(receipt, 'schema ledger work_unit sequence id check definition purpose started ended argv cwd env tool before after git_before git_after outcome exit_code output error', 'receipt')
+    require(type(receipt['outcome']) is str and receipt['outcome'] in OUTCOMES, 'invalid execution outcome')
+    require(type(receipt['error']) is str and nonempty(receipt['started']) and nonempty(receipt['ended']), 'invalid execution metadata')
+    try:
+        start, end = (datetime.fromisoformat(receipt[k]) for k in ('started', 'ended'))
+        require(start.tzinfo is not None and end.tzinfo is not None and end >= start, 'invalid execution timestamps')
+    except (ValueError, TypeError) as exc:
+        raise ValueError('invalid execution timestamps') from exc
+    require(receipt['exit_code'] is None or type(receipt['exit_code']) is int, 'invalid process exit code')
+    if receipt['outcome'] == 'completed':
+        require(type(receipt['exit_code']) is int and all(receipt[k] is not None for k in ('before', 'after', 'tool', 'output', 'git_before', 'git_after')), 'incomplete execution capture')
+    for field in ('before', 'after'):
+        if receipt[field] is not None:
+            validate_fingerprint(receipt[field])
+    if receipt['tool'] is not None:
+        shape(receipt['tool'], 'path sha256', 'executable')
+        require(type(receipt['tool']['path']) is str and Path(receipt['tool']['path']).is_absolute(), 'invalid executable path')
+        digest(receipt['tool']['sha256'])
+    for field in ('git_before', 'git_after'):
+        if receipt[field] is not None:
+            shape(receipt[field], 'head index_sha256', 'Git context')
+            require(type(receipt[field]['head']) is str and re.fullmatch(r'[0-9a-f]{40,64}', receipt[field]['head']), 'invalid recorded HEAD')
+            if receipt[field]['index_sha256'] is not None:
+                digest(receipt[field]['index_sha256'])
+    if receipt['output'] is not None:
+        shape(receipt['output'], 'stdout stderr', 'output')
+        for stream in receipt['output'].values():
+            shape(stream, 'bytes sha256 excerpt truncated complete', 'output stream')
+            require(type(stream['bytes']) is int and stream['bytes'] >= 0 and type(stream['truncated']) is bool and type(stream['complete']) is bool and type(stream['excerpt']) is str, 'invalid output metadata')
+            digest(stream['sha256'])
+            excerpt = base64.b64decode(stream['excerpt'], validate=True)
+            require(len(excerpt) == min(EXCERPT_LIMIT, stream['bytes']) and stream['truncated'] == (len(excerpt) < stream['bytes']), 'invalid output excerpt length')
+            if not stream['truncated']:
+                require(sha(excerpt) == stream['sha256'], 'output digest mismatch')
+
+
+def execution_succeeded(receipt):
+    validate_execution(receipt)
+    return (receipt['outcome'] == 'completed' and receipt['exit_code'] == 0
+            and not receipt['error'] and all(s['complete'] for s in receipt['output'].values())
+            and receipt['before'] == receipt['after'] and receipt['git_before'] == receipt['git_after'])
+
+
 def validate_history(root, ledger, contract, definitions):
     receipts = {}
     ids = set()
@@ -532,42 +580,9 @@ def validate_history(root, ledger, contract, definitions):
             shape(receipt, 'schema ledger work_unit sequence id check definition purpose outcome reason', 'abandoned receipt')
             require(nonempty(receipt['reason']), 'missing abandonment reason')
         else:
-            shape(receipt, 'schema ledger work_unit sequence id check definition purpose started ended argv cwd env tool before after git_before git_after outcome exit_code output error', 'receipt')
+            validate_execution(receipt)
             check, _ = definitions[(attempt['check'], attempt['definition'])]
             require(receipt['argv'] == check['argv'] and receipt['cwd'] == check['cwd'] and receipt['env'] == environment(check), 'receipt execution definition mismatch')
-            require(type(receipt['outcome']) is str and receipt['outcome'] in OUTCOMES, 'invalid execution outcome')
-            require(type(receipt['error']) is str and nonempty(receipt['started']) and nonempty(receipt['ended']), 'invalid execution metadata')
-            try:
-                start, end = (datetime.fromisoformat(receipt[k]) for k in ('started', 'ended'))
-                require(start.tzinfo is not None and end.tzinfo is not None and end >= start, 'invalid execution timestamps')
-            except (ValueError, TypeError) as exc:
-                raise ValueError('invalid execution timestamps') from exc
-            require(receipt['exit_code'] is None or type(receipt['exit_code']) is int, 'invalid process exit code')
-            if receipt['outcome'] == 'completed':
-                require(type(receipt['exit_code']) is int and all(receipt[k] is not None for k in ('before', 'after', 'tool', 'output', 'git_before', 'git_after')), 'incomplete execution capture')
-            for field in ('before', 'after'):
-                if receipt[field] is not None:
-                    validate_fingerprint(receipt[field])
-            if receipt['tool'] is not None:
-                shape(receipt['tool'], 'path sha256', 'executable')
-                require(type(receipt['tool']['path']) is str and Path(receipt['tool']['path']).is_absolute(), 'invalid executable path')
-                digest(receipt['tool']['sha256'])
-            for field in ('git_before', 'git_after'):
-                if receipt[field] is not None:
-                    shape(receipt[field], 'head index_sha256', 'Git context')
-                    require(type(receipt[field]['head']) is str and re.fullmatch(r'[0-9a-f]{40,64}', receipt[field]['head']), 'invalid recorded HEAD')
-                    if receipt[field]['index_sha256'] is not None:
-                        digest(receipt[field]['index_sha256'])
-            if receipt['output'] is not None:
-                shape(receipt['output'], 'stdout stderr', 'output')
-                for stream in receipt['output'].values():
-                    shape(stream, 'bytes sha256 excerpt truncated complete', 'output stream')
-                    require(type(stream['bytes']) is int and stream['bytes'] >= 0 and type(stream['truncated']) is bool and type(stream['complete']) is bool and type(stream['excerpt']) is str, 'invalid output metadata')
-                    digest(stream['sha256'])
-                    excerpt = base64.b64decode(stream['excerpt'], validate=True)
-                    require(len(excerpt) == min(EXCERPT_LIMIT, stream['bytes']) and stream['truncated'] == (len(excerpt) < stream['bytes']), 'invalid output excerpt length')
-                    if not stream['truncated']:
-                        require(sha(excerpt) == stream['sha256'], 'output digest mismatch')
         receipts[attempt['id']] = receipt
     return receipts
 
@@ -587,14 +602,39 @@ def ownership(root, ledger, roadmap, check, current, owned):
             require(path in ignored_set and path not in tracked_set, f'local-data input must be ignored and untracked: {path}')
         else:
             require(path not in ignored_set, f'ignored source input cannot be committed: {path}')
-    for record in snapshot.parse_status(root):
-        for path in {record.path, record.old_path} - {None}:
-            relevant = any(within(path, i['path']) for i in check['inputs']) and not any(within(path, e['path']) for e in check['exclusions'])
-            if relevant and path not in local and not evidence_path(path, ledger, roadmap):
-                require(path in owned, f'verified input outside reviewed ownership: {path}')
+    source_tree(root, ledger, roadmap, check, current, 'HEAD', owned)
 
 
-def validate(root, ledger, *, text=None, owned=None):
+def source_tree(root, ledger, roadmap, check, current, tree, allowed_changes=None):
+    def relevant(path):
+        return (any(i['role'] == 'source' and within(path, i['path']) for i in check['inputs'])
+                and not any(within(path, e['path']) for e in check['exclusions'])
+                and not evidence_path(path, ledger, roadmap))
+
+    result = snapshot.run(['git', 'ls-tree', '-r', '-z', tree], root, binary=True)
+    require(result.returncode == 0, 'cannot read required-source Git tree')
+    expected = {}
+    for row in result.stdout.split(b'\0'):
+        if not row:
+            continue
+        metadata, raw_path = row.split(b'\t', 1)
+        path = os.fsdecode(raw_path)
+        if relevant(path):
+            expected[path] = metadata.decode('ascii').split()
+    actual = {e['path']: e for e in current['entries'] if e['role'] == 'source' and e['kind'] == 'file'}
+    for path in sorted((expected.keys() | actual.keys()) - set(allowed_changes or ())):
+        message = f'verified source differs from Git tree: {path}'
+        if allowed_changes is not None:
+            message += ' (outside reviewed ownership)'
+        require(path in expected and path in actual, message + ' (path presence/kind)')
+        mode, kind, oid = expected[path]
+        require(kind == 'blob' and mode == actual[path]['mode'], message + ' (kind/executable mode)')
+        blob = snapshot.run(['git', 'cat-file', 'blob', oid], root, binary=True)
+        require(blob.returncode == 0, f'cannot read required-source blob: {path}')
+        require(sha(blob.stdout) == actual[path]['sha256'], message + ' (content; filtered materialization requires exact bytes)')
+
+
+def validate(root, ledger, *, text=None, owned=None, tree=None):
     root = root.resolve()
     try:
         text = text if text is not None else read_bytes(safe(root, ledger)).decode('utf-8')
@@ -626,6 +666,8 @@ def validate(root, ledger, *, text=None, owned=None):
                 require(executable(root, check) == receipt['tool'], 'stale executable context')
                 if owned is not None:
                     ownership(root, ledger, current["roadmap"], check, actual, owned)
+                if tree is not None:
+                    source_tree(root, ledger, current["roadmap"], check, actual, tree)
             except (OSError, ValueError) as exc:
                 errors.append(f'{check["id"]}: {exc}')
         return errors
@@ -652,7 +694,7 @@ def main():
         elif args.action == 'run':
             receipt = run_check(root, args.ledger, args.check_id, args.purpose)
             print(json.dumps({'attempt': receipt['id'], 'outcome': receipt['outcome'], 'exit_code': receipt['exit_code']}))
-            return 0 if receipt['outcome'] == 'completed' and receipt['exit_code'] == 0 and receipt['before'] == receipt['after'] and receipt['git_before'] == receipt['git_after'] else 2
+            return 0 if execution_succeeded(receipt) else 2
         elif args.action == 'abandon':
             abandon(root, args.ledger, args.attempt_id, args.reason)
         else:

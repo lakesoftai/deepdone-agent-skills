@@ -664,7 +664,7 @@ def validate_reviewed_change_set(
         errors.append("reviewed change-set path count does not match Git snapshot")
 
     errors.extend(validate_manifest_evidence(root, manifest))
-    errors.extend(verification_evidence.validate(root, ledger_path or "", text=ledger_text, owned=owned))
+    errors.extend(verification_evidence.validate(root, ledger_path or "", text=ledger_text, owned=owned, tree=review_tree))
     if any(verification_evidence.local_artifact(path) for path in owned):
         errors.append("verification artifacts cannot be committed as reviewed source")
     if owned and base_head and review_tree:

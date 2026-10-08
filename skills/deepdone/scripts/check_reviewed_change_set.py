@@ -24,6 +24,7 @@ from capture_reviewed_change_set import (  # noqa: E402
     filesystem_evidence,
     git_root,
     latest_review_entry,
+    review_entries,
     normalize_repo_path,
     ref_oid,
     run,
@@ -164,6 +165,43 @@ def validate_committed_snapshot(
     raise ValueError("committed reviewed code does not match review snapshot")
 
 
+def historical_provenance(root: Path, ledger_rel: str, ledger_text: str) -> None:
+    entries = review_entries(ledger_text)
+    referenced = {}
+    for entry in entries:
+        if entry.get('scope', {}).get('include') and entry.get('evidence'):
+            raise ValueError('historical downgrade: retained schema-v2 Review for selected ledger')
+        if entry.get('manifest'):
+            path = normalize_repo_path(root, str(entry['manifest']))
+            referenced[path] = entry
+    candidates = set(referenced)
+    candidates.update(p.relative_to(root).as_posix() for p in (root / '.deepdone/reviews').glob('*.json'))
+    for path in sorted(candidates):
+        try:
+            manifest = verification.decode((root / path).read_bytes())
+            if not isinstance(manifest, dict):
+                raise ValueError('manifest must be an object')
+        except (OSError, ValueError) as exc:
+            if path in referenced:
+                raise ValueError(f'ambiguous historical provenance: unreadable/missing retained manifest {path}') from exc
+            continue  # An unidentifiable, unreferenced artifact cannot establish this ledger's history.
+        evidence = manifest.get('evidence')
+        selected = manifest.get('ledger_path') == ledger_rel or (
+            isinstance(evidence, list) and any(isinstance(e, dict) and e.get('role') == 'ledger'
+                                             and e.get('path') == ledger_rel for e in evidence))
+        if path not in referenced and not selected:
+            continue
+        if manifest.get('ledger_path') != ledger_rel:
+            raise ValueError(f'ambiguous historical provenance: retained manifest ledger mismatch {path}')
+        if path in referenced and manifest.get('review_id') != referenced[path].get('review-id'):
+            raise ValueError(f'ambiguous historical provenance: retained manifest review ID mismatch {path}')
+        if isinstance(evidence, list) and any(isinstance(e, dict) and e.get('role') == 'ledger'
+                                              and e.get('path') != ledger_rel for e in evidence):
+            raise ValueError(f'ambiguous historical provenance: retained ledger evidence mismatch {path}')
+        if type(manifest.get('schema_version')) is not int or manifest['schema_version'] != LEGACY_MANIFEST_SCHEMA_VERSION:
+            raise ValueError(f'historical downgrade: retained stronger or unsupported manifest {path}')
+
+
 def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
     root = root.resolve()
     if (root / ".deepdone/STOP").exists():
@@ -184,6 +222,7 @@ def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
             raise ValueError("schema-v2 review manifest is missing; verification contract requires intact review manifest")
         if schema_v2_entry:
             raise ValueError("schema-v2 review manifest is missing")
+        historical_provenance(root, ledger_rel, ledger_text)
         if all_dirty:
             raise ValueError("legacy passing review cannot advance while repository is dirty")
         return [], []
@@ -195,6 +234,7 @@ def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
         if manifest.get("ledger_path") != ledger_rel or manifest.get("review_id") != entry.get("review-id"):
             raise ValueError("ambiguous historical manifest identity")
         validate_evidence(root, manifest)
+        historical_provenance(root, ledger_rel, ledger_text)
         if all_dirty:
             raise ValueError("legacy passing review cannot advance while repository is dirty")
         return [], []
@@ -204,13 +244,17 @@ def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
     reviewed = changed_paths(root, base_head, review_commit)
     if len(reviewed) != manifest.get("commit_path_count"):
         raise ValueError("review manifest path count does not match Git snapshot")
-    errors = verification.validate(root, ledger_rel, text=ledger_text, owned=reviewed) if new_evidence else []
+    errors = verification.validate(root, ledger_rel, text=ledger_text, owned=reviewed, tree=review_tree) if new_evidence else []
     if errors:
         raise ValueError("; ".join(errors))
     if not new_evidence and all_dirty:
         raise ValueError("legacy passing review cannot advance while repository is dirty")
     dirty_reviewed = sorted(reviewed.intersection(all_dirty))
     validate_committed_snapshot(root, base_head, review_commit, review_tree, reviewed, all_dirty)
+    if new_evidence and not dirty_reviewed:
+        errors = verification.validate(root, ledger_rel, text=ledger_text, tree="HEAD")
+        if errors:
+            raise ValueError("; ".join(errors))
     return dirty_reviewed, sorted(reviewed)
 
 

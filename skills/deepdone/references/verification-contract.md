@@ -128,8 +128,16 @@ expected-byte check detects edits during execution; it is not an OS-level CAS
 against an uncooperative editor racing the final check and rename.
 
 The child receives only system default PATH plus explicit `env`, never the whole
-ambient environment. The executable bytes are pinned and checked before/after
-and at gates. Choose `context:"local-files"` only for checks whose relevant inputs
+ambient environment. Bare executable names resolve through that PATH relative to
+the declared child cwd, including relative and empty PATH components. Relative
+argv paths also use that cwd; wrapper invocation location is irrelevant. Launch
+uses the resolved executable while preserving declared argv. Its bytes are pinned
+and checked before/after and at gates. Failed prelaunch resolution/capture never launches
+the command and finalizes valid nonpassing evidence where possible. Finalization,
+history and CLI use the same execution-record validation; CLI success also requires
+complete output and matching input/Git endpoints. CLI status describes this
+execution, including diagnostic/feedback runs, not whole-inventory readiness.
+Choose `context:"local-files"` only for checks whose relevant inputs
 are captured repository files, declared environment values, and that executable.
 Declare repository-local interpreters, libraries, wrapper files, and tool/config
 inputs when relevant. Relevant external configuration/libraries, hidden Git
@@ -146,8 +154,15 @@ not. Relevant ignored source cannot be committed and blocks ownership validation
 Ignored untracked local data must explicitly use `local-data`; it remains local
 context and is never promoted to committed source. Dirty relevant committable
 inputs must belong to the reviewed changed set; unchanged base dependencies may
-remain outside it. Missing/unreadable paths, symlinks, submodules/nested repos,
-and special files block. File watchers and network attestation are out of scope.
+remain outside it. Read gates compare actual required source against Git trees,
+including tree-side paths absent on disk, independently of status, index flags,
+and `core.fileMode`. Capture checks the prospective tree before publication;
+candidate/commit checks the captured tree; pre-Advance also checks committed HEAD.
+Content, file kind, presence and executable mode must match. A mismatch blocks
+without changing flags, config, index or user files. Filtered/materialized source
+whose bytes differ from its Git blob is unsupported; supply an exact representable
+source context before reviewing. Missing/unreadable paths, symlinks,
+submodules/nested repos, and special files block. File watchers and network attestation are out of scope.
 
 Exclude only `.git`, selected ledger/roadmap, the verification namespace, exact
 `.deepdone/commit-candidate.md`, and `.deepdone/reviews/*.json` evidence files.
@@ -189,7 +204,13 @@ are historical display, not another readiness parser. Missing/deleted contract
 is a blocker, never a fallback to old `pass`. Damaged contracts must be restored
 before revision. Clean already committed historical Advance retains bounded
 compatibility after applicable manifest/evidence validation and is not labelled
-receipt-verified. New-format evidence cannot use that compatibility.
+receipt-verified. Before weaker compatibility, structured earlier Review records
+and identifiable retained manifests for this ledger must establish eligibility.
+Retained stronger, missing, unreadable or contradictory applicable provenance
+blocks a later short-form/missing/schema-1 fallback. Unrelated ledgers do not
+establish this ledger's history. A valid current schema-v2 review can supersede
+older captures without revalidating their obsolete ledger hashes. New-format
+evidence cannot use historical compatibility.
 
 Capture, candidate, actual commit preflight, and pre-Advance follow the full chain:
 schema-v2 manifest hashes ledger; ledger pins inventories and receipts; receipts

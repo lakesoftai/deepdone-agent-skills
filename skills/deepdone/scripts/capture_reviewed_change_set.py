@@ -99,15 +99,21 @@ def section(text: str, name: str) -> str:
     return text[start:end].strip("\n")
 
 
-def latest_review_entry(ledger_text: str) -> dict[str, object]:
+def review_entries(ledger_text: str) -> list[dict[str, object]]:
     lines = section(ledger_text, "Review").splitlines()
     starts = [index for index, line in enumerate(lines) if re.match(r"^\s*-\s*reviewed-at:\s*", line)]
-    if not starts:
-        return {}
+    return [parse_review_entry(lines[start:end]) for start, end in zip(starts, starts[1:] + [len(lines)])]
 
+
+def latest_review_entry(ledger_text: str) -> dict[str, object]:
+    entries = review_entries(ledger_text)
+    return entries[-1] if entries else {}
+
+
+def parse_review_entry(lines: list[str]) -> dict[str, object]:
     entry: dict[str, object] = {"scope": {"include": [], "exclude": []}, "evidence": {}, "paths": []}
     context: str | None = None
-    for raw in lines[starts[-1] :]:
+    for raw in lines:
         stripped = raw.strip()
         indent = len(raw) - len(raw.lstrip())
         if re.match(r"^-\s*reviewed-at:\s*", stripped):
@@ -495,6 +501,9 @@ def capture(root: Path, ledger_value: str) -> Path:
         raise ValueError("; ".join(errors))
 
     tree = build_tree_from_worktree(root, base_head, selected_paths)
+    errors = verification.validate(root, ledger_rel, text=ledger_text, owned=selected_paths, tree=tree)
+    if errors:
+        raise ValueError("; ".join(errors))
     created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     review_commit = create_review_commit(root, tree, base_head, review_id, created_at)
     ref = review_ref(root, review_id)
