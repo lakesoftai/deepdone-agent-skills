@@ -280,12 +280,22 @@ def environment(check):
     return {'PATH': os.defpath, **check['env']}
 
 
+def working_directory(root, check):
+    try:
+        path = safe(root, check['cwd'], dot=True)
+        require(path.is_dir(), 'working directory is missing or not a directory')
+        require(os.access(path, os.X_OK), 'working directory is not searchable')
+        return path
+    except (OSError, ValueError) as exc:
+        raise ValueError(f'invalid cwd {check["cwd"]}: {exc}') from exc
+
+
 def executable(root, check):
+    cwd = working_directory(root, check)
     argv0 = check['argv'][0]
     if '/' in argv0:
-        path = Path(argv0) if Path(argv0).is_absolute() else root / check['cwd'] / argv0
+        path = Path(argv0) if Path(argv0).is_absolute() else cwd / argv0
     else:
-        cwd = safe(root, check['cwd'], dot=True)
         search = os.pathsep.join(str(Path(item) if Path(item).is_absolute() else cwd / item)
                                  for item in environment(check)['PATH'].split(os.pathsep))
         found = shutil.which(argv0, path=search)
@@ -360,7 +370,7 @@ def stream_command(root, check, tool=None):
     process = None
     try:
         tool = tool if tool is not None else executable(root, check)
-        process = subprocess.Popen(check['argv'], executable=tool['path'], cwd=safe(root, check['cwd'], dot=True), env=environment(check), stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+        process = subprocess.Popen(check['argv'], executable=tool['path'], cwd=working_directory(root, check), env=environment(check), stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         deadline = time.monotonic() + check['timeout']
         with selectors.DefaultSelector() as selector:
             for name in output:
@@ -455,12 +465,14 @@ def run_check(root, ledger, check_id, purpose='readiness'):
         receipt = {'schema': SCHEMA, 'ledger': ledger, 'work_unit': unit(ledger), **attempt_identity(attempt), 'started': now(), 'ended': '', 'argv': check['argv'], 'cwd': check['cwd'], 'env': environment(check), 'tool': None, 'before': None, 'after': None, 'git_before': None, 'git_after': None, 'outcome': 'capture-error', 'exit_code': None, 'output': None, 'error': ''}
         try:
             receipt['git_before'] = git_context(root)
+            working_directory(root, check)
             receipt['before'] = fingerprint(root, ledger, check, current['roadmap'])
             receipt['outcome'] = 'spawn-error'
             receipt['tool'] = executable(root, check)
             receipt['outcome'] = 'capture-error'
             require(not (root / '.deepdone/STOP').exists(), '.deepdone/STOP exists before launch')
             receipt['outcome'], receipt['exit_code'], receipt['output'], receipt['error'] = stream_command(root, check, receipt['tool'])
+            working_directory(root, check)
             receipt['after'] = fingerprint(root, ledger, check, current['roadmap'])
             receipt['git_after'] = git_context(root)
             if receipt['tool'] is not None:
@@ -605,6 +617,33 @@ def ownership(root, ledger, roadmap, check, current, owned):
     source_tree(root, ledger, roadmap, check, current, 'HEAD', owned)
 
 
+def source_directories(root, ledger, roadmap, check, current):
+    designated = {item['path'] for item in check['inputs']}
+
+    def traversal_only(path):
+        if path in designated:
+            return False
+        children = list(safe(root, path, dot=True).iterdir())
+        if not children:
+            return False
+        for child in children:
+            rel = child.relative_to(root).as_posix()
+            if evidence_path(rel, ledger, roadmap) or any(within(rel, e['path']) for e in check['exclusions']):
+                continue
+            if not safe(root, rel).is_dir() or not traversal_only(rel):
+                return False
+        return True
+
+    directories = {e['path'] for e in current['entries'] if e['role'] == 'source' and e['kind'] == 'directory'}
+    directories.update(i['path'] for i in check['inputs']
+                       if i['role'] == 'source' and safe(root, i['path'], dot=True).is_dir())
+    return {path for path in directories if not traversal_only(path)}
+
+
+def parent_directories(paths):
+    return {parent.as_posix() for path in paths for parent in PurePosixPath(path).parents}
+
+
 def source_tree(root, ledger, roadmap, check, current, tree, allowed_changes=None):
     def relevant(path):
         return (any(i['role'] == 'source' and within(path, i['path']) for i in check['inputs'])
@@ -614,13 +653,24 @@ def source_tree(root, ledger, roadmap, check, current, tree, allowed_changes=Non
     result = snapshot.run(['git', 'ls-tree', '-r', '-z', tree], root, binary=True)
     require(result.returncode == 0, 'cannot read required-source Git tree')
     expected = {}
+    materialized_leaves = set()
     for row in result.stdout.split(b'\0'):
         if not row:
             continue
         metadata, raw_path = row.split(b'\t', 1)
         path = os.fsdecode(raw_path)
+        entry = metadata.decode('ascii').split()
+        if entry[0] in ('100644', '100755') and entry[1] == 'blob':
+            materialized_leaves.add(path)
         if relevant(path):
-            expected[path] = metadata.decode('ascii').split()
+            expected[path] = entry
+    directories = {'.'} | parent_directories(materialized_leaves)
+    if allowed_changes is not None:
+        pending_files = {path for path in allowed_changes
+                         if (root / path).is_file() and not (root / path).is_symlink()}
+        directories |= parent_directories(pending_files)
+    for path in sorted(source_directories(root, ledger, roadmap, check, current)):
+        require(path in directories, f'required source directory not materialized by Git tree: {path}; review an owned source descendant or correct the declaration')
     actual = {e['path']: e for e in current['entries'] if e['role'] == 'source' and e['kind'] == 'file'}
     for path in sorted((expected.keys() | actual.keys()) - set(allowed_changes or ())):
         message = f'verified source differs from Git tree: {path}'
@@ -661,6 +711,7 @@ def validate(root, ledger, *, text=None, owned=None, tree=None):
                 require(not receipt['error'] and all(s['complete'] for s in receipt['output'].values()), 'incomplete output capture')
                 require(receipt['git_before'] == receipt['git_after'], 'check changed HEAD or real index')
                 require(receipt['before'] == receipt['after'], 'inputs changed during execution')
+                working_directory(root, check)
                 actual = fingerprint(root, ledger, check, current['roadmap'])
                 require(actual == receipt['after'], 'stale verification inputs')
                 require(executable(root, check) == receipt['tool'], 'stale executable context')

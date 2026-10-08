@@ -137,6 +137,17 @@ the command and finalizes valid nonpassing evidence where possible. Finalization
 history and CLI use the same execution-record validation; CLI success also requires
 complete output and matching input/Git endpoints. CLI status describes this
 execution, including diagnostic/feedback runs, not whole-inventory readiness.
+The declared cwd must currently be a searchable directory under the supported
+local path policy, even with absolute argv or cwd outside content input roots.
+Check it before launch, after execution and at current required readiness gates.
+Missing, nondirectory, symlinked or observed unusable cwd blocks. Post-execution
+context loss preserves the child's raw exit but produces valid nonpassing evidence
+and CLI failure. Repairing context permits a genuine later run; restoring the same
+supported cwd does not create an inode-based stale condition. Historical receipt
+integrity never requires obsolete or retired cwd paths to remain on disk. A
+context-only cwd is not automatically Git source; when also declared source,
+source materialization and current-context checks both apply.
+
 Choose `context:"local-files"` only for checks whose relevant inputs
 are captured repository files, declared environment values, and that executable.
 Declare repository-local interpreters, libraries, wrapper files, and tool/config
@@ -163,6 +174,18 @@ without changing flags, config, index or user files. Filtered/materialized sourc
 whose bytes differ from its Git blob is unsupported; supply an exact representable
 source context before reviewing. Missing/unreadable paths, symlinks,
 submodules/nested repos, and special files block. File watchers and network attestation are out of scope.
+
+Ordinary source directories in the fingerprint must materialize from ancestors
+of supported regular Git blobs, including committed descendants outside narrowly
+selected leaves. Root `.` exists intrinsically; an empty tree object does not prove
+materialization. An explicitly owned new descendant may establish a directory in
+the prospective tree. Required empty directories otherwise block; helpers never
+add markers or change declarations automatically. Local-data directories remain
+local context. Stored fingerprints and receipts retain their existing structure.
+Only the comparison projection omits a non-designated traversal parent whose
+nonempty contents consist entirely of narrowly excluded evidence/generated paths
+or such traversal parents. Explicit input roots and unexcluded empty children
+never receive that exemption, including under `notes/` or `.deepdone/`.
 
 Exclude only `.git`, selected ledger/roadmap, the verification namespace, exact
 `.deepdone/commit-candidate.md`, and `.deepdone/reviews/*.json` evidence files.
