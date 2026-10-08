@@ -187,8 +187,11 @@ nonempty contents consist entirely of narrowly excluded evidence/generated paths
 or such traversal parents. Explicit input roots and unexcluded empty children
 never receive that exemption, including under `notes/` or `.deepdone/`.
 
-Exclude only `.git`, selected ledger/roadmap, the verification namespace, exact
-`.deepdone/commit-candidate.md`, and `.deepdone/reviews/*.json` evidence files.
+Exclude only `.git`, selected ledger/roadmap, canonical task records, the verification
+namespace, exact `.deepdone/commit-candidate.md`, and `.deepdone/reviews/*.json`
+evidence files. For a selected task, also exclude canonical `notes/epics/**/*.md`
+records and exactly `notes/roadmap.md` from source projection and ownership;
+they remain unrelated state, not additional task evidence. Epic projection is unchanged.
 Evidence-container directory entries are omitted while ordinary contained files
 are still scanned. Ordinary `notes/`, `.deepdone/`, and ignored content remain
 inputs when under a declared root. Do not put relevant source under evidence

@@ -29,6 +29,7 @@ from capture_reviewed_change_set import (  # noqa: E402
     ref_oid,
     run,
     section,
+    validate_manifest_binding,
 )
 
 
@@ -243,8 +244,10 @@ def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
         return [], []
 
     base_head, _, review_commit, review_tree = validate_manifest_identity(root, ledger_rel, entry, manifest)
+    validate_manifest_binding(root, ledger_rel, entry, manifest)
     validate_evidence(root, manifest)
     reviewed = changed_paths(root, base_head, review_commit)
+    work_unit.validate_ownership(ledger_rel, reviewed)
     if len(reviewed) != manifest.get("commit_path_count"):
         raise ValueError("review manifest path count does not match Git snapshot")
     errors = verification.validate(root, ledger_rel, text=ledger_text, owned=reviewed, tree=review_tree) if new_evidence else []

@@ -564,47 +564,10 @@ def validate_reviewed_change_set(
         errors.append("reviewed change-set review ID does not match latest Review entry")
     if manifest.get("base_head") != entry.get("base-head"):
         errors.append("reviewed change-set base HEAD does not match latest Review entry")
-    manifest_scope = manifest.get("scope")
-    if isinstance(entry_scope, dict) and isinstance(manifest_scope, dict):
-        try:
-            normalized_entry_scope = {
-                "include": [
-                    review_snapshot.normalize_scope_root(root, str(value))
-                    for value in entry_scope.get("include", [])
-                ],
-                "exclude": [
-                    review_snapshot.normalize_scope_root(root, str(value))
-                    for value in entry_scope.get("exclude", [])
-                ],
-            }
-        except ValueError as exc:
-            errors.append(str(exc))
-        else:
-            if manifest_scope != normalized_entry_scope:
-                errors.append("reviewed change-set scope does not match latest Review entry")
-    else:
-        errors.append("reviewed change-set scope is malformed")
-
-    entry_evidence = entry.get("evidence")
-    raw_manifest_evidence = manifest.get("evidence")
-    if isinstance(entry_evidence, dict) and isinstance(raw_manifest_evidence, list):
-        try:
-            expected_evidence = {
-                role: normalize_repo_path(root, str(path))
-                for role, path in entry_evidence.items()
-            }
-        except ValueError as exc:
-            errors.append(str(exc))
-            expected_evidence = {}
-        actual_evidence = {
-            str(item.get("role", "")): str(item.get("path", ""))
-            for item in raw_manifest_evidence
-            if isinstance(item, dict)
-        }
-        if expected_evidence != actual_evidence:
-            errors.append("reviewed change-set evidence does not match latest Review entry")
-    else:
-        errors.append("reviewed change-set evidence is malformed")
+    try:
+        review_snapshot.validate_manifest_binding(root, ledger_path or "", entry, manifest)
+    except ValueError as exc:
+        errors.append(str(exc))
     code, current_head, _ = run(["git", "rev-parse", "HEAD"], root)
     if code != 0 or manifest.get("base_head") != current_head:
         errors.append("repository HEAD changed after review")
@@ -631,6 +594,10 @@ def validate_reviewed_change_set(
     except ValueError as exc:
         errors.append(str(exc))
         owned = set()
+    try:
+        work_unit.validate_ownership(ledger_path, owned)
+    except ValueError as exc:
+        errors.append(str(exc))
     if not owned:
         errors.append("reviewed change set has no Git paths")
     if manifest.get("commit_path_count") != len(owned):

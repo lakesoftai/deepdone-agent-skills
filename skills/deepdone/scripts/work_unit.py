@@ -42,6 +42,16 @@ def identity(path):
     return hashlib.sha256(path.encode()).hexdigest()
 
 
+def task_unowned_path(ledger, path):
+    return bool(TASK_PATH.fullmatch(ledger or '')) and (
+        path == 'notes/roadmap.md' or bool(re.fullmatch(r'notes/epics/(?:[^/]+/)*[^/]+\.md', path)))
+
+
+def validate_ownership(ledger, paths):
+    unrelated = sorted(path for path in paths if task_unowned_path(ledger, path))
+    require(not unrelated, f'unrelated lifecycle records cannot be task-owned source: {unrelated}')
+
+
 def safe(root, path):
     current = root
     for part in PurePosixPath(path).parts:

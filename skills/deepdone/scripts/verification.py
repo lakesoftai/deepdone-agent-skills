@@ -110,7 +110,7 @@ def local_artifact(path):
 
 
 def evidence_path(path, ledger, roadmap):
-    return path == '.git' or path == ledger or path == roadmap or local_artifact(path)
+    return path == '.git' or path == ledger or path == roadmap or local_artifact(path) or work_unit.task_unowned_path(ledger, path)
 
 
 def contract_span(text):

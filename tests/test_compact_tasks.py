@@ -96,6 +96,179 @@ class CompactTaskTests(unittest.TestCase):
         return self.cli('commit_progress', '--task', TASK, '--commit', '--yes', '--authorized-by', 'exact-user-request',
                         '--reviewed-change-set', '.deepdone/reviews/task-demo-0001.json')
 
+    def test_manifest_binding_at_candidate_commit_and_terminal(self):
+        manifest = self.capture()
+        original = json.loads(manifest.read_text())
+        other = self.path.with_name('other.md'); other.write_text(task_text('other'))
+        mutations = {
+            'scope': lambda m: m.update(scope={'include':['elsewhere'],'exclude':[]}),
+            'additional-include': lambda m: m['scope']['include'].append('elsewhere'),
+            'omitted-include': lambda m: m['scope'].update(include=[]),
+            'additional-exclude': lambda m: m['scope']['exclude'].append('src/elsewhere'),
+            'missing-scope': lambda m: m.pop('scope'),
+            'duplicate-scope': lambda m: m.update(scope={'include':['src','src/'],'exclude':[]}),
+            'cross-task': lambda m: m.update(evidence=[capture.filesystem_evidence(self.root,'ledger','.deepdone/tasks/other.md')]),
+            'missing-evidence': lambda m: m.update(evidence=[]),
+            'duplicate-role': lambda m: m['evidence'].append(copy.deepcopy(m['evidence'][0])),
+            'extra-role': lambda m: m['evidence'].append(capture.filesystem_evidence(self.root,'roadmap','.deepdone/tasks/other.md')),
+            'unknown-role': lambda m: m['evidence'][0].update(role='other'),
+            'malformed-path': lambda m: m['evidence'][0].update(path=[]),
+            'malformed-role': lambda m: m['evidence'][0].update(role=[]),
+            'evidence-kind': lambda m: m['evidence'][0].update(kind='symlink'),
+            'evidence-mode': lambda m: m['evidence'][0].update(mode='100755'),
+            'evidence-hash': lambda m: m['evidence'][0].update(sha256='0'*64),
+        }
+        for name, mutate in mutations.items():
+            with self.subTest(consumer='candidate/commit',mutation=name):
+                data=copy.deepcopy(original); mutate(data); manifest.write_text(json.dumps(data))
+                before=self.preserved()
+                errors=';'.join(self.candidate()['commit_gate_errors'])
+                self.assertRegex(errors,'scope|evidence')
+                result=self.commit(); self.assertNotEqual(result.returncode,0)
+                self.assertRegex(result.stderr,'scope|evidence')
+                self.assertEqual(self.preserved(),before)
+        manifest.write_text(json.dumps(original))
+        self.assertEqual(self.commit().returncode,0)
+        for name, mutate in mutations.items():
+            with self.subTest(consumer='terminal/inspection',mutation=name):
+                data=copy.deepcopy(original); mutate(data); manifest.write_text(json.dumps(data))
+                before=self.preserved()
+                result=self.cli('check_reviewed_change_set','--task',TASK)
+                self.assertNotEqual(result.returncode,0); self.assertRegex(result.stderr,'scope|evidence')
+                state=json.loads(self.cli('inspect_deepdone_state','--task',TASK).stdout)
+                self.assertFalse(state['task_integration']['committed_clean'])
+                self.assertRegex(';'.join(state['task_integration']['errors']),'scope|evidence')
+                self.assertEqual(self.preserved(),before)
+        manifest.write_text(json.dumps(original)); before=self.preserved()
+        self.assertEqual(self.cli('check_reviewed_change_set','--task',TASK).returncode,0)
+        self.assertEqual(self.preserved(),before)
+        self.edit_task(goal='Changed after capture')
+        self.assertIn('development evidence changed',self.cli('check_reviewed_change_set','--task',TASK).stderr)
+
+    def test_manifest_scope_order_and_normalization(self):
+        self.edit_task(scope={'include':['src','other'],'exclude':['src/generated','other/generated']})
+        manifest=self.capture(); data=json.loads(manifest.read_text())
+        data['scope']={'include':['other/','src/'],'exclude':['other/generated/','src/generated/']}
+        manifest.write_text(json.dumps(data))
+        self.assertEqual(self.candidate()['commit_gate_errors'],[])
+        self.assertEqual(self.commit().returncode,0)
+        self.assertEqual(self.cli('check_reviewed_change_set','--task',TASK).returncode,0)
+
+    def test_current_epic_uses_shared_terminal_binding(self):
+        self.fixture.setUp()
+        (self.root/'notes/epics').mkdir(parents=True)
+        ledger='notes/epics/demo.md'
+        self.fixture.write_passing_ledger(self.root,self.base,['src/'])
+        manifest=self.fixture.capture_ready(self.root)
+        self.assertEqual(self.fixture.run_commit(self.root,manifest).returncode,0)
+        self.assertEqual(self.cli('check_reviewed_change_set','--ledger',ledger).returncode,0)
+        original=json.loads(manifest.read_text())
+        for field,value in [('scope',{'include':['elsewhere'],'exclude':[]}),
+                            ('evidence',[capture.filesystem_evidence(self.root,'ledger',TASK)])]:
+            with self.subTest(field=field):
+                data=copy.deepcopy(original);data[field]=value;manifest.write_text(json.dumps(data))
+                before=self.preserved();result=self.cli('check_reviewed_change_set','--ledger',ledger)
+                self.assertNotEqual(result.returncode,0);self.assertIn(field,result.stderr)
+                self.assertEqual(self.preserved(),before)
+
+    def test_broad_task_preserves_unrelated_lifecycle_records(self):
+        (self.root/'.gitignore').write_text('.deepdone/\n')
+        epic=self.root/'notes/epics/nested/other.md'; epic.parent.mkdir(parents=True)
+        epic.write_text('malformed unrelated epic\n')
+        roadmap=self.root/'notes/roadmap.md'; roadmap.write_text('malformed unrelated roadmap\n')
+        git(self.root,'add','.gitignore','notes/roadmap.md');git(self.root,'commit','-qm','Track unrelated roadmap')
+        self.base=git(self.root,'rev-parse','HEAD').stdout.strip()
+        roadmap.write_text('unrelated dirty edit\n');roadmap.chmod(0o755)
+        source=epic.with_name('source.py');source.write_text('VALUE = 3\n');source.chmod(0o755)
+        self.edit_task(scope={'include':['.'],'exclude':[]})
+        self.check['inputs']=[{'path':'.','role':'source'}]
+        before={p:(p.read_bytes(),p.stat().st_mode) for p in (epic,roadmap)}
+        manifest=self.capture(); data=json.loads(manifest.read_text())
+        owned=capture.changed_paths(self.root,data['base_head'],data['review_commit'])
+        self.assertEqual(owned,{'src/app.py','notes/epics/nested/source.py'})
+        self.assertEqual([e['path'] for e in data['evidence']],[TASK])
+        self.assertEqual(self.candidate()['commit_gate_errors'],[])
+        self.assertEqual(self.commit().returncode,0)
+        self.assertEqual(set(git(self.root,'diff-tree','--no-commit-id','--name-only','-r','HEAD').stdout.splitlines()),owned)
+        self.assertEqual(git(self.root,'show','HEAD:notes/epics/nested/source.py').stdout,'VALUE = 3\n')
+        self.assertTrue(git(self.root,'ls-tree','HEAD','notes/epics/nested/source.py').stdout.startswith('100755'))
+        self.assertEqual({p:(p.read_bytes(),p.stat().st_mode) for p in before},before)
+        self.assertEqual(git(self.root,'ls-files','--error-unmatch','notes/epics/nested/other.md',check=False).returncode,1)
+        self.assertEqual(git(self.root,'show','HEAD:notes/roadmap.md').stdout,'malformed unrelated roadmap\n')
+        self.assertEqual(self.cli('check_reviewed_change_set','--task',TASK).returncode,0)
+        self.assertEqual(sorted(p.relative_to(self.root/'notes').as_posix() for p in (self.root/'notes').rglob('*') if p.is_file()),
+                         ['epics/nested/other.md','epics/nested/source.py','roadmap.md'])
+
+    def test_staged_unrelated_records_are_unowned(self):
+        epic=self.root/'notes/epics/other.md';epic.parent.mkdir(parents=True)
+        epic.write_text('unrelated epic\n');roadmap=self.root/'notes/roadmap.md';roadmap.write_text('unrelated roadmap\n')
+        self.edit_task(scope={'include':['.'],'exclude':[]})
+        self.capture()
+        git(self.root,'add','-f','notes/epics/other.md','notes/roadmap.md')
+        before=self.preserved();candidate=self.candidate()
+        self.assertEqual(candidate['staged_unowned_files'],['notes/epics/other.md','notes/roadmap.md'])
+        result=self.commit();self.assertNotEqual(result.returncode,0)
+        self.assertIn('staged',result.stderr)
+        self.assertEqual(self.preserved(),before)
+
+    def test_task_lifecycle_projection_and_directory_boundaries(self):
+        epic=self.root/'notes/epics/nested/other.md';epic.parent.mkdir(parents=True)
+        epic.write_text('unrelated\n');roadmap=self.root/'notes/roadmap.md';roadmap.write_text('unrelated\n')
+        self.check['inputs']=[{'path':'.','role':'source'}]
+        task=v.fingerprint(self.root,TASK,self.check,None)
+        self.assertNotIn('notes/epics/nested/other.md',[e['path'] for e in task['entries']])
+        self.assertNotIn('notes/roadmap.md',[e['path'] for e in task['entries']])
+        epic.chmod(0);roadmap.chmod(0)
+        self.assertEqual(v.fingerprint(self.root,TASK,self.check,None),task)
+        epic.chmod(0o644);roadmap.chmod(0o644)
+        self.capture(); self.assertEqual(self.candidate()['commit_gate_errors'],[])
+        for directory in ('notes/epics','notes/epics/ordinary'):
+            with self.subTest(directory=directory):
+                p=self.root/directory;p.mkdir(exist_ok=True)
+                check={**self.check,'inputs':[{'path':'src','role':'source'},{'path':directory,'role':'source'}]}
+                fp=v.fingerprint(self.root,TASK,check,None)
+                with self.assertRaisesRegex(ValueError,'required source directory not materialized'):
+                    v.source_tree(self.root,TASK,None,check,fp,'HEAD')
+        with self.assertRaisesRegex(ValueError,'evidence path cannot be a declared input'):
+            v.fingerprint(self.root,TASK,{**self.check,'inputs':[{'path':'notes/roadmap.md','role':'source'}]},None)
+        original=v.fingerprint(self.root,'notes/epics/selected.md',self.check,None)
+        self.assertIn('notes/roadmap.md',[e['path'] for e in original['entries']])
+
+    def test_tracked_lifecycle_deletions_remain_unowned(self):
+        epic=self.root/'notes/epics/other.md';epic.parent.mkdir(parents=True)
+        epic.write_text('# Other\n\n## Status\n\ncomplete\n')
+        self.assertEqual(w.select(self.root)[0]['path'],TASK)
+        roadmap=self.root/'notes/roadmap.md';roadmap.write_text('# Roadmap\n')
+        git(self.root,'add','-f','notes/epics/other.md','notes/roadmap.md')
+        git(self.root,'commit','-qm','Track unrelated completed lifecycle')
+        self.base=git(self.root,'rev-parse','HEAD').stdout.strip()
+        self.edit_task(scope={'include':['.'],'exclude':[]})
+        epic.unlink();roadmap.unlink();manifest=self.capture()
+        data=json.loads(manifest.read_text())
+        self.assertEqual(capture.changed_paths(self.root,data['base_head'],data['review_commit']),{'src/app.py'})
+        self.assertEqual(self.commit().returncode,0)
+        self.assertFalse(epic.exists());self.assertFalse(roadmap.exists())
+        self.assertEqual(git(self.root,'show','HEAD:notes/roadmap.md').stdout,'# Roadmap\n')
+        self.assertEqual(self.cli('check_reviewed_change_set','--task',TASK).returncode,0)
+
+    def test_task_source_rename_cannot_cross_lifecycle_boundary(self):
+        for old,new in [('notes/roadmap.md','notes/source.md'),('notes/source.md','notes/epics/renamed.md')]:
+            with self.subTest(old=old,new=new):
+                case=CompactTaskTests();case.setUp()
+                try:
+                    prior=case.root/old;prior.parent.mkdir(parents=True,exist_ok=True);prior.write_text('Unrelated bytes\n')
+                    git(case.root,'add','-f',old);git(case.root,'commit','-qm','Track rename source')
+                    case.base=git(case.root,'rev-parse','HEAD').stdout.strip()
+                    (case.root/new).parent.mkdir(parents=True,exist_ok=True)
+                    git(case.root,'mv',old,new)
+                    case.edit_task(scope={'include':['.'],'exclude':[]});case.ready();case.review()
+                    before=case.preserved()
+                    with self.assertRaisesRegex(ValueError,'lifecycle record crosses a task source rename boundary'):
+                        capture.capture(case.root,TASK)
+                    self.assertEqual(case.preserved(),before)
+                finally:
+                    case.doCleanups()
+
     def test_full_lifecycle_and_readonly_terminal(self):
         self.assertEqual(w.load(self.root, TASK)['identity'], v.sha(TASK.encode()))
         self.assertEqual(w.select(self.root)[0]['path'], TASK)

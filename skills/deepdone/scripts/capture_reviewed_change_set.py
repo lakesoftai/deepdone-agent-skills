@@ -131,7 +131,7 @@ def parse_review_entry(lines: list[str]) -> dict[str, object]:
         if indent <= 2 and stripped == "paths:":
             context = "paths"
             continue
-        if context == "scope" and indent >= 4 and stripped in {"include:", "exclude:"}:
+        if context in {"scope", "scope-include", "scope-exclude"} and indent >= 4 and stripped in {"include:", "exclude:"}:
             context = f"scope-{stripped[:-1]}"
             continue
         if context in {"scope-include", "scope-exclude"} and indent >= 4 and re.match(r"^-\s+", stripped):
@@ -195,6 +195,7 @@ def select_reviewed_records(
     include: list[str],
     exclude: list[str],
     evidence_paths: set[str],
+    ledger: str | None = None,
 ) -> list[StatusRecord]:
     from verification import local_artifact
 
@@ -205,6 +206,11 @@ def select_reviewed_records(
         logical_paths = {record.path}
         if record.old_path:
             logical_paths.add(record.old_path)
+        unrelated = {path for path in logical_paths if work_unit.task_unowned_path(ledger, path)}
+        if unrelated:
+            if unrelated != logical_paths:
+                raise ValueError(f'unrelated lifecycle record crosses a task source rename boundary: {sorted(logical_paths)}')
+            continue
         included_paths = {
             path
             for path in logical_paths
@@ -457,6 +463,47 @@ def validate_entry(
     return review_id, base_head, manifest_rel, include, exclude, evidence
 
 
+def validate_manifest_binding(root: Path, ledger_rel: str, entry: dict, manifest: dict) -> None:
+    scopes = []
+    for value in (entry.get('scope'), manifest.get('scope')):
+        if not isinstance(value, dict) or set(value) != {'include', 'exclude'}:
+            raise ValueError('reviewed change-set scope is malformed')
+        normalized = {}
+        for key in ('include', 'exclude'):
+            roots = value[key]
+            if not isinstance(roots, list) or (key == 'include' and not roots) or not all(isinstance(p, str) and p for p in roots):
+                raise ValueError('reviewed change-set scope is malformed')
+            paths = [normalize_scope_root(root, path) for path in roots]
+            if len(paths) != len(set(paths)):
+                raise ValueError('reviewed change-set scope contains duplicate roots')
+            normalized[key] = sorted(paths)
+        scopes.append(normalized)
+    if scopes[0] != scopes[1]:
+        raise ValueError('reviewed change-set scope does not match latest Review entry')
+    expected = entry.get('evidence')
+    raw = manifest.get('evidence')
+    if not isinstance(expected, dict) or not isinstance(raw, list) or not all(isinstance(path, str) and path for path in expected.values()):
+        raise ValueError('reviewed change-set evidence is malformed')
+    if set(expected) - ALLOWED_EVIDENCE_ROLES:
+        raise ValueError('latest Review has unsupported evidence roles')
+    expected = {role: normalize_repo_path(root, path) for role, path in expected.items()}
+    if expected.get('ledger') != ledger_rel:
+        raise ValueError('latest Review ledger evidence must match selected work unit')
+    actual = {}
+    for item in raw:
+        if not isinstance(item, dict) or not isinstance(item.get('role'), str) or item['role'] not in ALLOWED_EVIDENCE_ROLES:
+            raise ValueError('reviewed change set has unsupported or malformed evidence role')
+        role = item['role']
+        if role in actual:
+            raise ValueError(f'reviewed change set repeats evidence role: {role}')
+        path = item.get('path')
+        if not isinstance(path, str) or not path:
+            raise ValueError('reviewed change-set evidence path is malformed')
+        actual[role] = normalize_repo_path(root, path)
+    if expected != actual:
+        raise ValueError('reviewed change-set evidence does not match latest Review entry')
+
+
 def prior_manifest_owns_ref(path: Path, ledger_rel: str, ref: str, ref_commit: str) -> bool:
     try:
         prior = json.loads(path.read_text(encoding="utf-8"))
@@ -496,7 +543,7 @@ def capture(root: Path, ledger_value: str) -> Path:
     review_id, base_head, manifest_rel, include, exclude, evidence_roles = validate_entry(root, ledger_rel, entry)
     evidence_paths = set(evidence_roles.values())
     records = parse_status(root)
-    selected = select_reviewed_records(records, include, exclude, evidence_paths)
+    selected = select_reviewed_records(records, include, exclude, evidence_paths, ledger_rel)
     selected_paths = {record.path for record in selected}
     selected_paths.update(record.old_path for record in selected if record.old_path)
 
