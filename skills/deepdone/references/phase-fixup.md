@@ -1,5 +1,7 @@
 # Fixup Phase
 
+For a selected compact task, apply the [task contract](task-contract.md) and carry its explicit `--task` selector through every helper. Epic-only roadmap/milestone rules below do not apply to tasks.
+
 ## Conforms To
 
 - `DD-STATE-002`

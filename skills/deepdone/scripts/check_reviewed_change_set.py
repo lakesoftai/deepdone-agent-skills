@@ -33,6 +33,7 @@ from capture_reviewed_change_set import (  # noqa: E402
 
 
 import verification  # noqa: E402
+import work_unit
 
 MANIFEST_SCHEMA_VERSION = 2
 LEGACY_MANIFEST_SCHEMA_VERSION = 1
@@ -206,10 +207,12 @@ def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
     root = root.resolve()
     if (root / ".deepdone/STOP").exists():
         raise ValueError(".deepdone/STOP exists")
+    record = work_unit.load(root, ledger_value)
     ledger_rel, entry, manifest_path, manifest = load_entry_and_manifest(root, ledger_value)
+    work_unit.bind_review(record, entry)
     all_dirty = dirty_paths(root)
     ledger_text = (root / ledger_rel).read_text(encoding="utf-8")
-    new_evidence = verification.contract_span(ledger_text) is not None or (root / verification.namespace(ledger_rel)).exists()
+    new_evidence = record["kind"] == "task" or verification.contract_span(ledger_text) is not None or (root / verification.namespace(ledger_rel)).exists()
 
     entry_scope = entry.get("scope")
     schema_v2_entry = (
@@ -277,6 +280,8 @@ def roadmap_has_advanced(root: Path, completed_ledger: str) -> bool:
 
 def cleanup(root: Path, ledger_value: str, *, require_advanced: bool = False) -> tuple[Path, str]:
     root = root.resolve()
+    if work_unit.load(root, ledger_value)["kind"] == "task":
+        raise ValueError("task cleanup/Advance/Archive is unsupported; use read-only committed-task check")
     ledger_rel, entry, manifest_path, manifest = load_entry_and_manifest(root, ledger_value)
     if manifest_path is None or manifest is None:
         raise ValueError("schema-v2 review manifest is required for cleanup")
@@ -296,7 +301,7 @@ def cleanup(root: Path, ledger_value: str, *, require_advanced: bool = False) ->
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ledger", required=True, help="repository-relative epic ledger path")
+    work_unit.add_selectors(parser, required=True)
     parser.add_argument(
         "--cleanup-after-advance",
         action="store_true",
@@ -307,16 +312,17 @@ def main() -> int:
         root = git_root(Path.cwd())
         if (root / ".deepdone" / "STOP").exists():
             raise ValueError(".deepdone/STOP exists")
+        selected = work_unit.explicit(root, args)["path"]
         if args.cleanup_after_advance:
-            manifest_path, ref = cleanup(root, args.ledger, require_advanced=True)
+            manifest_path, ref = cleanup(root, selected, require_advanced=True)
             print(f"Removed advanced review snapshot: {manifest_path.relative_to(root)} and {ref}")
             return 0
-        dirty, reviewed = check(root, args.ledger)
+        dirty, reviewed = check(root, selected)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
-        print(f"Refusing advance: {exc}", file=sys.stderr)
+        print(f"Refusing committed-work check: {exc}", file=sys.stderr)
         return 2
     if dirty:
-        print(f"Refusing advance: {len(dirty)} reviewed Git paths remain dirty", file=sys.stderr)
+        print(f"Refusing committed-work check: {len(dirty)} reviewed Git paths remain dirty", file=sys.stderr)
         for path in dirty[:20]:
             print(f"- {path}", file=sys.stderr)
         if len(dirty) > 20:

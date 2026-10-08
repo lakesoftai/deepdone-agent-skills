@@ -49,6 +49,8 @@ Read this reference before executing an internal phase or taking an externally v
 
 `until-commit` and `end-to-end` stop after commit. They never advance the roadmap in the same run.
 
+For a compact task, `until-milestone` means verified and `until-epic` means review passed. These are stop-target mappings only; no synthetic epic/milestone or extra authority. See [task contract](task-contract.md).
+
 ## Authorization Contract
 
 Every phase execution includes:

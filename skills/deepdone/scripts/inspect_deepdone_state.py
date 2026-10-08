@@ -7,6 +7,7 @@ signals for the single public DeepDone skill.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -15,8 +16,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+import work_unit
+import verification
+import check_reviewed_change_set as committed
+
 
 def run(cmd: list[str], cwd: Path) -> tuple[int, str, str]:
+    if cmd and cmd[0] == "git":
+        cmd = ["git", "--no-optional-locks", *cmd[1:]]
     proc = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True)
     return proc.returncode, proc.stdout.rstrip("\n"), proc.stderr.rstrip("\n")
 
@@ -86,23 +96,8 @@ def status_is_complete(status: str) -> bool:
 
 
 def find_obvious_active_ledger(root: Path) -> Path | None:
-    epics = root / "notes" / "epics"
-    if not epics.exists():
-        return None
-    candidates: list[Path] = []
-    completed: list[Path] = []
-    for path in sorted(epics.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
-        text = read_text(path)
-        status = section(text, "Status")
-        if status_is_active(status):
-            candidates.append(path)
-        elif status_is_complete(status) and latest_review_result(text) == "pass":
-            completed.append(path)
-    if len(candidates) == 1:
-        return candidates[0]
-    if not candidates and len(completed) == 1:
-        return completed[0]
-    return None
+    record, _, errors = work_unit.select(root)
+    return root / record['path'] if record and record['kind'] == 'epic' and not errors else None
 
 
 def latest_verification_lines(ledger_text: str, limit: int = 3) -> list[str]:
@@ -184,7 +179,11 @@ def only_lifecycle_state_changes(status_lines: list[str]) -> bool:
 
 
 def main() -> int:
-    start = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('root', nargs='?', default='.')
+    work_unit.add_selectors(parser)
+    args = parser.parse_args()
+    start = Path(args.root).resolve()
     root = git_root(start)
 
     code, branch, _ = run(["git", "branch", "--show-current"], root)
@@ -195,26 +194,28 @@ def main() -> int:
     _, staged_diff_stat, _ = run(["git", "diff", "--cached", "--stat"], root)
 
     roadmap_path = root / "notes" / "roadmap.md"
-    roadmap_text = read_text(roadmap_path)
+    try:
+        roadmap_text = read_text(roadmap_path)
+    except (OSError, UnicodeError):
+        roadmap_text = ''  # Shared discovery reports it; explicit independent selection remains usable.
     roadmap_exists = bool(roadmap_text)
     active = parse_active_epic(roadmap_text) if roadmap_exists else {"name": None, "ledger": None, "state": None}
 
-    roadmap_ledger_path = safe_rel(root, active.get("ledger"))
-    roadmap_ledger_valid = bool(roadmap_ledger_path and roadmap_ledger_path.exists())
-    ledger_path = roadmap_ledger_path if roadmap_ledger_valid else None
-    if ledger_path is None:
-        ledger_path = find_obvious_active_ledger(root)
-
-    ledger_text = read_text(ledger_path) if ledger_path else ""
-    ledger_status = section(ledger_text, "Status") if ledger_text else ""
-    if ledger_path is None:
-        ledger_role = "none"
-    elif roadmap_ledger_valid and ledger_path == roadmap_ledger_path:
-        ledger_role = "roadmap-selected"
-    elif status_is_complete(ledger_status) and latest_review_result(ledger_text) == "pass":
-        ledger_role = "reviewed-complete-fallback"
-    else:
-        ledger_role = "active-fallback"
+    record, selection_source, selection_errors = work_unit.select(root, task=args.task, ledger=args.ledger)
+    roadmap_ledger_path = safe_rel(root, active.get('ledger'))
+    roadmap_ledger_valid = bool(roadmap_ledger_path and roadmap_ledger_path.is_file())
+    ledger_path = root / record['path'] if record else None
+    ledger_text = record['text'] if record else ''
+    ledger_status = record['status'] if record else ''
+    ledger_role = selection_source
+    readiness = verification.validate(root, record['path']) if record else []
+    integration = None
+    if record and record['kind'] == 'task' and record['status'] == 'complete':
+        try:
+            dirty, reviewed = committed.check(root, record['path'])
+            integration = {'committed_clean': not dirty, 'errors': [f'reviewed paths remain dirty: {dirty}'] if dirty else [], 'reviewed_paths': reviewed}
+        except (OSError, ValueError) as exc:
+            integration = {'committed_clean': False, 'errors': [str(exc)]}
 
     warnings: list[str] = []
     if (root / ".deepdone" / "STOP").exists():
@@ -232,6 +233,12 @@ def main() -> int:
         warnings.append("complete_ledger_without_passing_review")
 
     data: dict[str, Any] = {
+        "work_unit": work_unit.public(record),
+        "selection_source": selection_source,
+        "selection_errors": selection_errors,
+        "readiness_errors": readiness,
+        "task_review_complete": bool(record and record["kind"] == "task" and record["status"] == "complete" and latest_review_result(ledger_text) == "pass"),
+        "task_integration": integration,
         "repo_root": str(root),
         "branch": branch,
         "stop_file_present": (root / ".deepdone" / "STOP").exists(),

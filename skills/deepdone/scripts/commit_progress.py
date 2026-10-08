@@ -21,6 +21,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import capture_reviewed_change_set as review_snapshot  # noqa: E402
 import verification as verification_evidence  # noqa: E402
+import work_unit
 
 
 MANIFEST_SCHEMA_VERSION = 2
@@ -133,7 +134,7 @@ def is_dangerous(path: str) -> bool:
 
 
 def is_local_only(path: str) -> bool:
-    return any(pattern.search(path) for pattern in LOCAL_ONLY_PATTERNS)
+    return verification_evidence.local_artifact(path) or any(pattern.search(path) for pattern in LOCAL_ONLY_PATTERNS)
 
 
 def read_text(path: Path) -> str:
@@ -211,47 +212,10 @@ def normalize_repo_path(root: Path, value: str) -> str:
 
 
 def parse_active_ledger(root: Path, explicit_ledger: str | None = None) -> tuple[str | None, str | None, str | None, str]:
-    if explicit_ledger:
-        try:
-            ledger_rel = normalize_repo_path(root, explicit_ledger)
-            ledger_path = ensure_repo_path(root, ledger_rel)
-        except ValueError:
-            return None, explicit_ledger, None, ""
-        text = read_text(ledger_path)
-        return ledger_title(text), ledger_rel, None, text
-
-    roadmap = read_text(root / "notes" / "roadmap.md")
-    if roadmap:
-        active = section(roadmap, "Active Epic")
-        values: dict[str, str] = {}
-        for key in ("name", "ledger", "state"):
-            match = re.search(rf"^-\s*{key}:\s*(.+?)\s*$", active, flags=re.MULTILINE)
-            if match:
-                values[key] = match.group(1).strip()
-        ledger = values.get("ledger")
-        if ledger and ledger not in {"none", "null"}:
-            try:
-                ledger_rel = normalize_repo_path(root, ledger)
-                text = read_text(ensure_repo_path(root, ledger_rel))
-            except ValueError:
-                return values.get("name"), ledger, values.get("state", "").lower() or None, ""
-            return values.get("name"), ledger_rel, values.get("state", "").lower() or None, text
-
-    epics = root / "notes" / "epics"
-    if epics.exists():
-        candidates: list[Path] = []
-        completed: list[Path] = []
-        for path in sorted(epics.glob("*.md"), key=lambda item: item.stat().st_mtime, reverse=True):
-            text = read_text(path)
-            if status_is_active(section(text, "Status")):
-                candidates.append(path)
-            elif status_is_complete(section(text, "Status")) and review_results(review_lines(text)) == ["pass"]:
-                completed.append(path)
-        selected = candidates[0] if len(candidates) == 1 else completed[0] if not candidates and len(completed) == 1 else None
-        if selected:
-            text = read_text(selected)
-            return ledger_title(text), selected.relative_to(root).as_posix(), None, text
-    return None, None, None, ""
+    record, _, errors = work_unit.select(root, ledger=explicit_ledger)
+    if errors or not record:
+        return None, explicit_ledger, None, ""
+    return record.get('roadmap_name', record['title']), record['path'], record['status'], record['text']
 
 
 def latest_lines(text: str, section_name: str, limit: int = 8) -> list[str]:
@@ -389,6 +353,11 @@ def commit_gate_errors(
     errors: list[str] = []
     if not ledger_path or not ledger_text:
         errors.append("missing active ledger")
+    if root is not None and ledger_path and ledger_text:
+        try:
+            work_unit.bind_review(work_unit.load(root, ledger_path, text=ledger_text), latest_review_entry(ledger_text))
+        except (OSError, ValueError) as exc:
+            errors.append(str(exc))
     if active_epic_state == "blocked":
         errors.append("active epic state is blocked")
     # root=None retains the legacy parser API for historical diagnostics only.
@@ -458,13 +427,12 @@ def format_evidence(lines: list[str], nested: bool = False) -> list[str]:
     return formatted
 
 
-def build_message(epic: str | None, milestone: str | None, verification: list[str], review: list[str], files: list[GitFile]) -> str:
+def build_message(epic: str | None, milestone: str | None, verification: list[str], review: list[str], files: list[GitFile], task: str | None = None) -> str:
     lines = [
         make_subject(guess_area(files), milestone, files),
         "",
         "DeepDone:",
-        f"- Epic: {epic or 'none'}",
-        f"- Milestone: {milestone or 'none'}",
+        *([f"- Task: {task}"] if task else [f"- Epic: {epic or 'none'}", f"- Milestone: {milestone or 'none'}"]),
         "- Verification:",
     ]
     lines.extend(format_evidence(verification or ["not found in active ledger"], nested=True))
@@ -546,6 +514,11 @@ def validate_reviewed_change_set(
     stale: list[str] = []
     staged_unowned: list[str] = []
     entry = latest_review_entry(ledger_text) if ledger_text else {}
+    if ledger_path:
+        try:
+            work_unit.bind_review(work_unit.load(root, ledger_path, text=ledger_text), entry)
+        except (OSError, ValueError) as exc:
+            errors.append(str(exc))
     entry_manifest = str(entry.get("manifest", ""))
     chosen_manifest = manifest_value or entry_manifest or None
     if entry.get("result") != "pass":
@@ -772,7 +745,7 @@ def main() -> int:
     parser.add_argument("--authorized-by", choices=("exact-user-request", "mode"), help="current-run authority source")
     parser.add_argument("--include-untracked", action="store_true", help="deprecated; manifest owns exact untracked paths")
     parser.add_argument("--message-file", help="use an existing commit message file")
-    parser.add_argument("--ledger", help="explicit active or reviewed-complete epic ledger path")
+    work_unit.add_selectors(parser)
     parser.add_argument("--reviewed-change-set", help="explicit latest reviewed change-set manifest")
     parser.add_argument("--output", default="-", help="candidate output path, or '-' for stdout")
     args = parser.parse_args()
@@ -785,12 +758,17 @@ def main() -> int:
     all_files = parse_status_z(root)
     excluded_local = [item for item in all_files if is_local_only(item.path)]
     meaningful_files = [item for item in all_files if not is_local_only(item.path)]
-    if not meaningful_files:
+    record, selection_source, selection_errors = work_unit.select(root, task=args.task, ledger=args.ledger)
+    if not meaningful_files and not selection_errors and not record:
         print("No changes to commit.")
         return 0
 
-    epic, ledger_path, active_epic_state, ledger_text = parse_active_ledger(root, args.ledger)
-    milestone = current_milestone(ledger_text) if ledger_text else None
+    ledger_path = record['path'] if record else None
+    ledger_text = record['text'] if record else ''
+    is_task = bool(record and record['kind'] == 'task')
+    epic = record['title'] if record and not is_task else None
+    active_epic_state = record['status'] if record and not is_task else None
+    milestone = current_milestone(ledger_text) if ledger_text and not is_task else None
     verification = latest_verification_lines(ledger_text, limit=3) if ledger_text else []
     review = review_lines(ledger_text) if ledger_text else []
     open_loops = latest_lines(ledger_text, "Open Loops") if ledger_text else []
@@ -799,11 +777,14 @@ def main() -> int:
     reviewed, excluded, manifest_errors, stale, staged_unowned, manifest_rel, manifest_path, owned = validate_reviewed_change_set(
         root, ledger_path, ledger_text, args.reviewed_change_set, all_files
     )
+    gate_errors.extend(e["reason"] + ": " + ", ".join(e["paths"]) for e in selection_errors)
+    if record and record["status"] == "blocked" and is_task:
+        gate_errors.append("selected task is blocked")
     gate_errors.extend(error for error in manifest_errors if error not in gate_errors)
     message = (
         read_text(ensure_repo_path(root, args.message_file))
         if args.message_file
-        else build_message(epic, milestone, verification, review, reviewed)
+        else build_message(epic, milestone, verification, review, reviewed, record["title"] if is_task else None)
     )
     manifest_data: dict[str, object] = {}
     if manifest_path and manifest_path.exists():
@@ -815,6 +796,9 @@ def main() -> int:
             manifest_data = loaded
 
     candidate: dict[str, object] = {
+        "work_unit": work_unit.public(record),
+        "selection_source": selection_source,
+        "selection_errors": selection_errors,
         "epic": epic,
         "ledger_path": ledger_path,
         "active_epic_state": active_epic_state,

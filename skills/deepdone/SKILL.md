@@ -38,7 +38,7 @@ Accept:
 - requirements or continuation goal
 - mode
 - optional requested phase
-- explicit roadmap or ledger path
+- explicit task, roadmap or epic ledger path
 - constraints, non-goals, approvals, and stop conditions
 
 Default mode: `one-step`.
@@ -46,6 +46,8 @@ Default mode: `one-step`.
 Commit modes: `until-commit` and `end-to-end`. They authorize local commit only and stop after commit.
 
 A requested phase is a routing preference, not a state or authorization override. If it does not match the required transition, report the required phase and stop unless the selected loop mode independently permits that transition.
+
+For compact tasks, read the [task contract](references/task-contract.md). Pin `--task <path>` across phases; task completion never enters epic Advance/Archive. A later explicitly selected completed-task inspection checks integration read-only.
 
 ## Phase Routing
 
@@ -77,9 +79,9 @@ Inspect:
 3. `git status --short --untracked-files=all`
 4. current branch, staged diff, unstaged diff, and relevant untracked files
 5. root and nested `AGENTS.md`
-6. explicit roadmap or ledger path
-7. `notes/roadmap.md` and its active ledger
-8. one obvious active ledger when no roadmap selects one
+6. explicit typed task or epic selection
+7. shared work-unit discovery across active/blocked tasks and epics, including roadmap candidates
+8. block on competing candidates or broken pointers; never automatically select completed tasks
 9. milestones, Verification Log, Review, reviewed change-set manifest and private review ref, Open Loops, Next Action, and Status
 10. current repository files and latest check evidence
 
@@ -116,7 +118,8 @@ Phase context:
 - Phase: <phase-name>
 - Classification before: <state>
 - Roadmap: <path or none>
-- Active ledger: <path or none>
+- Selected work unit: <task|epic, path, stable identity; pinned selector>
+- Active ledger: <epic path or none>
 - Boundary: perform only this transition.
 
 Authorizations:

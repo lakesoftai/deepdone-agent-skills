@@ -14,20 +14,11 @@ This internal phase is for resuming:
 - a single epic, or
 - the active epic inside a multi-epic initiative
 
-If the current work is a deliberate small task with no ledger, keep recovery compact and work from thread goal plus repo state.
+For compact tasks, read the pinned task record and [task contract](task-contract.md). Completed tasks require explicit selection; never reopen them during discovery.
 
 ## Input
 
-Prefer explicit ledger path.
-If none provided, locate work in this order:
-
-1. explicit roadmap path from prompt, then use `Active Epic.ledger`
-2. one roadmap with an obvious active epic
-3. explicit epic ledger path from prompt
-4. one obvious active epic ledger in `notes/epics/`
-5. if no ledger exists, resume as a small task from thread goal and repo state
-
-If multiple plausible roadmaps or epic ledgers exist and choice is unclear, surface ambiguity instead of guessing blindly.
+Use shared work-unit selection. Preserve the explicit `--task` or `--ledger` selector throughout the run; conflicting candidates or broken pointers block.
 
 ## What To Read
 
@@ -89,7 +80,7 @@ If no planning mode exists, write a compact reconciliation plan and stop before 
 ## Workflow
 
 1. Locate the active work unit.
-2. If roadmap exists, confirm which epic is supposed to be active.
+2. For an epic, confirm its associated roadmap. A task has no roadmap association.
 3. Summarize target outcome and current state.
 4. Compare ledger claims against current diff and latest checks.
 5. Identify the latest completed milestone.

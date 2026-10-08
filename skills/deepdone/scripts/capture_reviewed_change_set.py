@@ -21,6 +21,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 
+import work_unit
+
 MANIFEST_SCHEMA_VERSION = 2
 REVIEW_ID_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]{7,127}$")
 REVIEW_REF_PREFIX = "refs/deepdone/reviews/"
@@ -410,6 +412,8 @@ def validate_entry(
     ledger_rel: str,
     entry: dict[str, object],
 ) -> tuple[str, str, str, list[str], list[str], dict[str, str]]:
+    record = work_unit.load(root, ledger_rel)
+    work_unit.bind_review(record, entry)
     if entry.get("result") != "pass":
         raise ValueError("latest Review result is not pass")
     review_id = str(entry.get("review-id", ""))
@@ -448,7 +452,7 @@ def validate_entry(
     if evidence.get("ledger") != ledger_rel:
         raise ValueError("latest Review ledger evidence must match selected epic ledger")
     roadmap_path = root / "notes" / "roadmap.md"
-    if roadmap_path.is_file() and evidence.get("roadmap") != "notes/roadmap.md":
+    if record["roadmap"] and roadmap_path.is_file() and evidence.get("roadmap") != "notes/roadmap.md":
         raise ValueError("latest Review must include active roadmap evidence")
     return review_id, base_head, manifest_rel, include, exclude, evidence
 
@@ -566,13 +570,13 @@ def capture(root: Path, ledger_value: str) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ledger", required=True, help="repository-relative epic ledger path")
+    work_unit.add_selectors(parser, required=True)
     args = parser.parse_args()
     try:
         root = git_root(Path.cwd())
         if (root / ".deepdone" / "STOP").exists():
             raise ValueError(".deepdone/STOP exists")
-        manifest_path = capture(root, args.ledger)
+        manifest_path = capture(root, work_unit.explicit(root, args)["path"])
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         print(f"Refusing review capture: {exc}", file=sys.stderr)

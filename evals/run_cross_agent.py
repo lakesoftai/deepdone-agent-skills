@@ -22,6 +22,7 @@ SCRIPT_DIR = ROOT / "skills/deepdone/scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import commit_progress  # noqa: E402
+import work_unit
 
 SCHEMA_PATH = ROOT / "evals" / "result-schema.json"
 AGENTS = ("codex", "claude")
@@ -219,9 +220,12 @@ def seed_active(root: Path, *, roadmap: bool = False) -> dict[str, object]:
 
 def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
     errors: list[str] = []
+    is_task = state.get('kind') == 'task'
+    record_path = '.deepdone/tasks/calculator.md' if is_task else 'notes/epics/current.md'
     try:
-        ledger = read_or_empty(root / "notes/epics/current.md")
-    except (OSError, UnicodeError) as exc:
+        ledger = read_or_empty(root / record_path)
+        work_unit.load(root, record_path, "task" if is_task else "epic")
+    except (OSError, UnicodeError, ValueError) as exc:
         return [f"ledger evidence could not be read: {type(exc).__name__}: {exc}"]
     # Load src.calc as a package module from the fixture's explicit import root.
     check = (
@@ -243,13 +247,13 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
     # Use the evaluator's helper, not a potentially edited copy in the fixture.
     try:
         errors.extend(commit_progress.commit_gate_errors(
-            "notes/epics/current.md", None, ledger,
+            record_path, None, ledger,
             commit_progress.latest_verification_lines(ledger),
             commit_progress.review_lines(ledger),
             section(ledger, "Open Loops").splitlines(), root=root,
         ))
         validation = commit_progress.validate_reviewed_change_set(
-            root, "notes/epics/current.md", ledger, None, commit_progress.parse_status_z(root),
+            root, record_path, ledger, None, commit_progress.parse_status_z(root),
         )
         errors.extend(validation[2])
         if "src/calc.py" not in validation[7]:
@@ -260,9 +264,26 @@ def grade_lifecycle(root: Path, state: dict[str, object]) -> list[str]:
         # Malformed evidence is a grading failure, not a crashed evaluation run.
         errors.append(f"review evidence validation failed: {type(exc).__name__}: {exc}")
     if section(ledger, "Status").strip() != "complete":
-        errors.append("epic not complete after review")
+        errors.append(f"{'task' if is_task else 'epic'} not complete after review")
     return errors
 
+
+
+def seed_task(root: Path) -> dict[str, object]:
+    write(root / 'src/calc.py', 'def add(a, b):\n    return a + b\n')
+    write(root / 'tests/test_calc.py', 'import unittest\n\nclass CalcTests(unittest.TestCase):\n    pass\n')
+    task = {
+        'schema': 1, 'kind': 'task', 'id': 'calculator',
+        'goal': 'Add subtraction while preserving addition',
+        'scope': {'include': ['src/', 'tests/'], 'exclude': []},
+        'acceptance': [{'check_id': 'arithmetic', 'condition': 'Addition and subtraction return expected results'}],
+        'constraints': ['No commit in candidate-only evaluation'],
+    }
+    write(root / '.deepdone/tasks/calculator.md',
+          '# Calculator task\n\n## Task\n\n```json\n' + json.dumps(task, indent=2) + '\n```\n\n'
+          '## Verification Log\n\nNo executions yet.\n\n## Review\n\n- reviewed-at: not-run\n  result: pending\n\n'
+          '## Open Loops\n\nnone\n\n## Next Action\n\nImplement subtract and verify both operations.\n\n## Status\n\nactive\n')
+    return {'base': commit_all(root, 'evaluation base'), 'kind': 'task'}
 
 def seed_review_fix(root: Path) -> dict[str, object]:
     write(root / "src/auth.py", "def allowed(role):\n    return role == 'admin'\n")
@@ -391,6 +412,14 @@ def scenarios() -> list[Scenario]:
             "implement-verify-review",
             "Use $deepdone. Continue current epic in mode until-epic. Implement milestone, verify, review, and stop at mode boundary.",
             lambda root: seed_active(root),
+            grade_lifecycle,
+        ),
+        Scenario(
+            "compact-task-candidate",
+            "Use $deepdone. Mode: until-commit-candidate. Selected task: .deepdone/tasks/calculator.md. "
+            "Phase context: pin --task .deepdone/tasks/calculator.md through implement, verify, review and candidate. "
+            "Add subtract, preserve add, run real checks, capture exact review and prepare candidate. Do not commit or change HEAD.",
+            seed_task,
             grade_lifecycle,
         ),
         Scenario(

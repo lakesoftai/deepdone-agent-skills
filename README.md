@@ -2,6 +2,8 @@
 
 DeepDone is one public skill for agent-driven software work. It supports single-step or bounded end-to-end implementation from planning through a reviewed local commit. PR and archive actions remain separate and explicit.
 
+Small work uses one typed `.deepdone/tasks/<id>.md` record through the same receipt, review and commit gates. Completed tasks stay retained and need explicit selection on a later run; they never advance or archive an epic.
+
 It keeps long work recoverable through one roadmap, one active epic ledger, and narrow internal workflow phases.
 
 ## Installation
@@ -158,6 +160,7 @@ See [LICENSE](LICENSE).
 
 See:
 
+- [examples/compact-task.md](examples/compact-task.md)
 - [examples/roadmap.md](examples/roadmap.md)
 - [examples/single-epic-ledger.md](examples/single-epic-ledger.md)
 - [examples/multi-epic-active-ledger.md](examples/multi-epic-active-ledger.md)

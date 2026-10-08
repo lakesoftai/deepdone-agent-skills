@@ -203,6 +203,7 @@ class CrossAgentEvaluationTests(unittest.TestCase):
                 "skill-discovery",
                 "natural-language-one-step-intake",
                 "implement-verify-review",
+                "compact-task-candidate",
                 "review-fail-fix-verify-review",
                 "end-to-end-one-commit-no-advance",
                 "state-label-no-commit-authority",

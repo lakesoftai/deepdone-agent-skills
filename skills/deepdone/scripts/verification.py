@@ -22,6 +22,7 @@ import time
 import uuid
 
 import capture_reviewed_change_set as snapshot
+import work_unit
 
 SCHEMA = 1
 HEADING = 'Verification Contract'
@@ -97,9 +98,7 @@ def within(path, parent):
 
 
 def unit(ledger):
-    relative(ledger)
-    require(ledger.startswith('notes/epics/') and ledger.endswith('.md'), 'selected ledger must be under notes/epics/')
-    return sha(ledger.encode())
+    return work_unit.identity(ledger)
 
 
 def namespace(ledger):
@@ -107,7 +106,7 @@ def namespace(ledger):
 
 
 def local_artifact(path):
-    return within(path, '.deepdone/verification') or path == '.deepdone/commit-candidate.md' or bool(re.fullmatch(r'\.deepdone/reviews/[^/]+\.json', path))
+    return bool(work_unit.TASK_PATH.fullmatch(path)) or within(path, '.deepdone/verification') or path == '.deepdone/commit-candidate.md' or bool(re.fullmatch(r'\.deepdone/reviews/[^/]+\.json', path))
 
 
 def evidence_path(path, ledger, roadmap):
@@ -327,7 +326,7 @@ def fingerprint(root, ledger, check, roadmap):
             entry = {'path': rel, 'kind': 'file', 'mode': '100755' if mode & 0o111 else '100644', 'sha256': file_digest(path), 'role': role}
         if rel in found:
             require(found[rel] == entry, f'conflicting input roles: {rel}')
-        if rel not in ('.deepdone', '.deepdone/reviews'):
+        if rel not in ('.deepdone', '.deepdone/reviews', '.deepdone/tasks'):
             found[rel] = entry
         if entry['kind'] == 'directory':
             for child in sorted(path.iterdir()):
@@ -427,10 +426,17 @@ def attempt_identity(attempt):
 
 def initialize(root, ledger, checks, reason, roadmap=None):
     root = root.resolve()
+    record = work_unit.load(root, ledger)
     require(nonempty(reason), 'inventory/migration reason required')
+    require(type(checks) is list and checks, 'empty inventory')
+    ids = [definition(c) for c in checks]
+    require(len({c['id'] for c in checks}) == len(ids) and any(c['required'] for c in checks), 'duplicate IDs or empty required-check set')
+    require(roadmap in (None, 'notes/roadmap.md'), 'unsupported roadmap path')
+    work_unit.bind_checks(record, checks, roadmap)
     with locked(root, ledger):
         expected = read_bytes(safe(root, ledger))
         text = expected.decode('utf-8')
+        work_unit.bind_checks(work_unit.load(root, ledger, text=text), checks, roadmap)
         if contract_span(text):
             contract = read_contract(text, ledger)
             _, definitions = inventory(root, ledger, contract)
@@ -439,23 +445,21 @@ def initialize(root, ledger, checks, reason, roadmap=None):
             require(not list((root / namespace(ledger)).glob('inventories/*.json')), 'verification contract was removed; restore it before revising')
             contract = {'schema': SCHEMA, 'work_unit': unit(ledger), 'ledger': ledger, 'inventories': [], 'attempts': []}
         value = {'schema': SCHEMA, 'work_unit': unit(ledger), 'ledger': ledger, 'revision': len(contract['inventories']) + 1, 'reason': reason, 'roadmap': roadmap, 'checks': checks}
-        # Validate the declaration before publishing or editing the ledger.
-        require(type(checks) is list and checks, 'empty inventory')
-        ids = [definition(c) for c in checks]
-        require(len({c['id'] for c in checks}) == len(ids) and any(c['required'] for c in checks), 'duplicate IDs or empty required-check set')
-        require(roadmap in (None, 'notes/roadmap.md'), 'unsupported roadmap path')
         contract['inventories'].append(immutable(root, ledger, 'inventories', value))
         replace_ledger(root, ledger, expected, contract)
 
 
 def run_check(root, ledger, check_id, purpose='readiness'):
     root = root.resolve()
+    record = work_unit.load(root, ledger)
     require(purpose in PURPOSES, 'invalid evidence purpose')
     with locked(root, ledger):
         expected = read_bytes(safe(root, ledger))
+        record = work_unit.load(root, ledger, text=expected.decode('utf-8'))
         contract = read_contract(expected.decode('utf-8'), ledger)
         current, definitions = inventory(root, ledger, contract)
         validate_history(root, ledger, contract, definitions)
+        work_unit.bind_checks(record, current['checks'], current['roadmap'])
         checks = [c for c in current['checks'] if c['id'] == check_id]
         require(len(checks) == 1, f'unknown current check: {check_id}')
         check = checks[0]
@@ -491,6 +495,7 @@ def run_check(root, ledger, check_id, purpose='readiness'):
 
 
 def abandon(root, ledger, attempt_id, reason):
+    work_unit.load(root, ledger)
     require(nonempty(reason), 'abandonment reason required')
     root = root.resolve()
     with locked(root, ledger):
@@ -688,8 +693,10 @@ def validate(root, ledger, *, text=None, owned=None, tree=None):
     root = root.resolve()
     try:
         text = text if text is not None else read_bytes(safe(root, ledger)).decode('utf-8')
+        record = work_unit.load(root, ledger, text=text)
         contract = read_contract(text, ledger)
         current, definitions = inventory(root, ledger, contract)
+        work_unit.bind_checks(record, current['checks'], current['roadmap'])
         receipts = validate_history(root, ledger, contract, definitions)
         errors = [f'pending verification attempt: {a["check"]}/{a["id"]}' for a in contract['attempts'] if a['status'] == 'pending']
         for check in current['checks']:
@@ -729,7 +736,7 @@ def validate(root, ledger, *, text=None, owned=None, tree=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('init', 'run', 'abandon', 'check'))
-    parser.add_argument('--ledger', required=True)
+    work_unit.add_selectors(parser, required=True)
     parser.add_argument('--inventory', help='JSON array of check definitions for init')
     parser.add_argument('--reason')
     parser.add_argument('--roadmap', choices=('notes/roadmap.md',))
@@ -739,17 +746,19 @@ def main():
     args = parser.parse_args()
     try:
         root = snapshot.git_root(Path.cwd())
+        require(not (root / '.deepdone/STOP').exists(), '.deepdone/STOP exists')
+        selected = work_unit.explicit(root, args)['path']
         if args.action == 'init':
             require(args.inventory is not None, '--inventory is required')
-            initialize(root, args.ledger, decode(read_bytes(Path(args.inventory))), args.reason, args.roadmap)
+            initialize(root, selected, decode(read_bytes(Path(args.inventory))), args.reason, args.roadmap)
         elif args.action == 'run':
-            receipt = run_check(root, args.ledger, args.check_id, args.purpose)
+            receipt = run_check(root, selected, args.check_id, args.purpose)
             print(json.dumps({'attempt': receipt['id'], 'outcome': receipt['outcome'], 'exit_code': receipt['exit_code']}))
             return 0 if execution_succeeded(receipt) else 2
         elif args.action == 'abandon':
-            abandon(root, args.ledger, args.attempt_id, args.reason)
+            abandon(root, selected, args.attempt_id, args.reason)
         else:
-            errors = validate(root, args.ledger)
+            errors = validate(root, selected)
             print(json.dumps({'errors': errors}))
             return 2 if errors else 0
     except (OSError, ValueError, TypeError, KeyError) as exc:

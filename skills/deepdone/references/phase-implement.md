@@ -6,26 +6,18 @@
 
 ## Purpose
 
-Implement one milestone, not the whole universe.
+Implement one selected task or epic milestone.
 
 This internal phase is the execution engine for:
 
-- a small task with no ledger, or
+- a small task with a compact task record, or
 - the currently active epic in a single-epic or multi-epic workflow
 
 It must not decompose product scope, invent future epics, or silently expand into adjacent work.
 
 ## Inputs
 
-Prefer explicit ledger path.
-If none provided, locate work in this order:
-
-1. explicit active epic ledger from prompt
-2. roadmap `Active Epic.ledger`
-3. one obvious active epic ledger in `notes/epics/`
-4. if no ledger exists, treat current thread goal as a small task
-
-If multiple plausible active epic ledgers exist and the correct one is unclear, surface ambiguity instead of guessing.
+Use shared [work-unit selection](task-contract.md#selection). Pin `--task` or `--ledger` across phases. Missing durable state requires Plan; ambiguous ownership blocks.
 
 ## What To Read
 
@@ -51,8 +43,7 @@ Use roadmap only to confirm scope and active-epic identity.
 Do not treat the roadmap as a place to do implementation planning.
 
 ### If small task
-Read the current thread goal, relevant AGENTS files, and current repo state.
-Treat the whole task as one compact milestone.
+Read the selected task record, relevant AGENTS files and repo state. Use its goal, scope, acceptance/check pairs and constraints without inventing a milestone.
 
 ## Preconditions
 
@@ -83,7 +74,7 @@ Before editing, confirm:
 
 - goal is narrow
 - one clear acceptance check exists
-- no durable epic state is needed yet
+- a valid compact task record is selected
 
 If scope expands materially during execution, stop and route through the Plan phase instead of inventing ad hoc ledger state.
 
@@ -96,6 +87,8 @@ If scope expands materially during execution, stop and route through the Plan ph
 - if current milestone is app bootstrap or generator setup, scaffold directly within the milestone boundary
 
 ## Ledger Update Rules
+
+For compact tasks follow [task lifecycle](task-contract.md#lifecycle): keep active, append pending Review after changes, use existing sections and never edit a roadmap. The following milestone rules apply to epics.
 
 Keep ledger current during milestone work:
 
@@ -160,7 +153,7 @@ Done only when:
 
 - intended behavior exists
 - required targeted checks were actually run or explicitly blocked
-- no durable epic state is needed retroactively
+- the task record reflects implementation truth and remains active for verification/review
 
 ### Epic-backed work
 Milestone is done only when:

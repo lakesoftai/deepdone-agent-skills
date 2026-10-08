@@ -1,5 +1,7 @@
 # Advance Phase
 
+A selected compact task cannot use this phase. Stop with `task Advance/Archive is unsupported; use read-only committed-task check`. Do not edit a task, roadmap, manifest or private review ref.
+
 ## Purpose
 
 Advance a multi-epic initiative without creating planning sprawl.

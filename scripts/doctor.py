@@ -64,6 +64,7 @@ REQUIRED_INVARIANT_IDS = {
 INVARIANT_ID_RE = re.compile(r"^DD-[A-Z]+-[0-9]{3}$")
 
 HELPER_SCRIPTS = [
+    "skills/deepdone/scripts/work_unit.py",
     "skills/deepdone/scripts/verification.py",
     "evals/run_cross_agent.py",
     "skills/deepdone/scripts/check_reviewed_change_set.py",
@@ -79,6 +80,7 @@ MANIFEST_SCHEMA_SCRIPTS = [
 ]
 
 EXAMPLES = [
+    "examples/compact-task.md",
     "examples/roadmap.md",
     "examples/single-epic-ledger.md",
     "examples/multi-epic-active-ledger.md",

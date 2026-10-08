@@ -8,7 +8,7 @@ Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed
 
 ### DD-STATE-001: Review pass owns completion
 
-- Rule: Only a latest Review result of `pass` may make an epic `complete` or roadmap state `complete-pending-advance`.
+- Rule: Only a latest Review result of `pass` may make a task or epic `complete` or roadmap state `complete-pending-advance`.
 - Applies to: `deepdone`, `phase-implement`, `phase-verify`, `phase-review`, `phase-advance`, `phase-sync`, `phase-commit`
 - Evidence: Latest Review entry is `pass`, ledger Status is `complete`, and roadmap state is `complete-pending-advance` when a roadmap exists.
 
@@ -26,7 +26,7 @@ Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed
 
 ### DD-EVIDENCE-001: Development state is evidence, not commit ownership
 
-- Rule: Active epic ledger and optional roadmap are filesystem-hashed development evidence regardless of Git tracking or ignore state; they never become commit candidates merely because review depends on them.
+- Rule: Selected task record or active epic ledger and optional epic roadmap are filesystem-hashed development evidence regardless of Git tracking or ignore state; they never become commit candidates merely because review depends on them.
 - Applies to: `phase-review`, `phase-commit`, `phase-advance`, `phase-sync`
 - Evidence: Schema-v2 manifest contains one `ledger` evidence record and optional `roadmap` record, while Git-reviewed paths are derived only from the private review snapshot.
 
@@ -56,7 +56,7 @@ Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed
 
 ## Durable States
 
-Epic ledger `## Status` values:
+Epic ledger and compact task `## Status` values:
 
 - `active`: implementation, verification, or review is still in progress
 - `blocked`: user input or an external condition is required
@@ -114,6 +114,10 @@ Schema-v2 JSON is compact deterministic gate evidence. It stores:
 It never stores a bulk path array. Git diff between `base_head` and `review_ref` is the exact path authority. Manifest schema version is `2`.
 
 Any behavior-changing implementation or fixup after review makes the previous review stale. Route through verification and review again.
+
+## Compact tasks
+
+Apply the [task contract](task-contract.md) for shared selection, acceptance binding and the task lifecycle. A valid selected task is suitable durable state for intake and one task with known acceptance can enter Implement. Keep its selector pinned through Review completion. Completed tasks are excluded from new-run discovery. Tasks do not enter Advance or Archive; explicitly selected completed tasks report review completion separately from read-only committed/clean validation. These additions do not reorder general phase precedence.
 
 ## Supervisor States
 

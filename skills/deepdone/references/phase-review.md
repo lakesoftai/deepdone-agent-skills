@@ -1,5 +1,7 @@
 # Review Phase
 
+For a selected compact task, apply the [task contract](task-contract.md) and carry its explicit `--task` selector through every helper. Epic-only roadmap/milestone rules below do not apply to tasks.
+
 ## Purpose
 
 Review local diff skeptically, with correctness above agreement.
@@ -54,7 +56,7 @@ Review only active-scope changes. Clearly unrelated files may remain dirty when 
 
 ## Ledger Writeback
 
-When epic ledger exists:
+For the selected durable work record:
 
 - ensure `## Review` exists after `## Verification Log`
 - append one entry with `reviewed-at`, `result`, and `notes`; latest entry wins
@@ -75,10 +77,10 @@ On `pass`:
 - record compact `scope.include` roots that cover active Git work
 - record narrow `scope.exclude` roots for distinguishable unrelated work inside an included root
 - record active ledger under `evidence.ledger`
-- record `notes/roadmap.md` under `evidence.roadmap` when a roadmap exists
+- for an epic, record its associated `notes/roadmap.md` under `evidence.roadmap`; tasks must omit it
 - mark ledger `Status` as `complete`
-- if roadmap exists, change current queue item from `[-]` to `[x]`
-- set roadmap `Active Epic.state` to `complete-pending-advance`
+- for an epic with a roadmap, change current queue item from `[-]` to `[x]`
+- for an epic, set roadmap `Active Epic.state` to `complete-pending-advance`
 - set `Next Action` from supervisor mode: for `until-epic`, await commit or explicit abandonment before advance when a roadmap has queued or finalization work, otherwise await the next explicit workflow request; use commit for commit-authorized modes and candidate for candidate mode
 - after all ledger and roadmap writes, run bundled `scripts/capture_reviewed_change_set.py` with the exact ledger path
 - treat pass as actionable only when capture succeeds; on capture failure append a newer `pending` or `blocked` Review entry with the exact failure
@@ -102,7 +104,7 @@ Use this passing entry shape:
   notes: <summary>
 ```
 
-Omit `evidence.roadmap` when no roadmap exists. Keep scope compact. Prefer a few narrow directories or exact files over one entry per changed path. Never make the agent enumerate thousands of files.
+Omit `evidence.roadmap` for every task and when no epic roadmap exists. Keep scope compact. Prefer a few narrow directories or exact files over one entry per changed path. Never make the agent enumerate thousands of files.
 
 Markdown is authoritative for review result, compact scope, and evidence roles. Capture helper expands that scope against current Git state, excludes evidence paths from commit ownership, builds a temporary index from `base-head`, writes one reviewed tree, creates one synthetic commit, and stores it under `refs/deepdone/reviews/<review-id>`.
 

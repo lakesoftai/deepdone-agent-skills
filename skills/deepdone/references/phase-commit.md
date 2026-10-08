@@ -1,5 +1,7 @@
 # Commit Phase
 
+For a selected compact task, apply the [task contract](task-contract.md) and carry its explicit `--task` selector through every helper. Epic-only roadmap/milestone rules below do not apply to tasks.
+
 ## Purpose
 
 Prepare or create a focused git commit for completed DeepDone work.
@@ -120,7 +122,7 @@ Resolve `<skill-dir>` as the loaded `deepdone` directory containing this referen
 
 Do not run `git add .`.
 
-When the supervisor provides a ledger path, pass `--ledger <path>` to the harness. This is required when multiple completed single-epic ledgers exist.
+Always carry the selected `--task <path>` or `--ledger <path>` to the harness. Task messages use `Task: <title>` and omit Epic/Milestone fields.
 
 The harness asks Git for exact paths between `base-head` and private `review_ref`. It never reads a bulk path list from Markdown or JSON.
 
@@ -136,7 +138,7 @@ Before commit, harness:
 
 Candidate output stays bounded: count, compact scope, Git ref and tree, and small status samples only. It reports and preserves unrelated unstaged or untracked work. Any unrelated staged path blocks actual commit. It must not create repo-local candidate files by default. Candidate output should go to stdout unless the user explicitly asks for a file.
 
-Successful commit retains schema-v2 manifest and private review ref. Advance owns cleanup after its durable state transition.
+Successful commit retains schema-v2 manifest and private review ref. Tasks stop without post-capture record writes; later explicit terminal validation is read-only. Only epic Advance owns cleanup after its durable state transition.
 
 If the bundled harness is unavailable, stop. Do not reproduce manifest validation or exact-set staging manually.
 

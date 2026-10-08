@@ -10,7 +10,7 @@ Its first job is scope classification.
 Possible outcomes:
 
 1. **Small task**
-   - no durable task file
+   - create one compact typed task record
    - move straight to implementation planning
 
 2. **Single epic**
@@ -27,7 +27,7 @@ Possible outcomes:
 Use the minimum file set needed.
 
 ### Small task
-Create no task markdown files.
+Create `.deepdone/tasks/<task-id>.md` using the [compact task contract](task-contract.md). Keep goal, scope, acceptance/check pairs and constraints in its Task block; create no epic or milestone list.
 
 ### Single epic
 Create exactly one file:
@@ -255,8 +255,8 @@ Focus planning on:
 2. Restate goal and hard constraints from user plus repo context.
 3. Classify as small task, single epic, or multi-epic initiative.
 4. If small task:
-   - say no ledger is needed
-   - move straight to implementation planning
+   - create and pin the compact task record
+   - move to implementation within its declared scope
 5. If single epic:
    - create one epic ledger
    - fill Summary, Constraints, Milestones, Review, Next Action, Status
@@ -291,6 +291,7 @@ Produce:
 
 - scope verdict: small task | single epic | multi-epic initiative
 - reason for the verdict
+- if small task: exact task path and acceptance/check pairs
 - if single epic: exact ledger path
 - if multi-epic: exact roadmap path and first epic ledger path
 - milestone list with acceptance checks for the active epic

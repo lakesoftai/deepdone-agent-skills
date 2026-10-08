@@ -17,11 +17,11 @@ Do not lead with blogs unless nothing better exists.
 
 ## Preconditions
 
-- active epic ledger exists
+- a selected epic ledger or compact task record exists
 - decision question is concrete
 - repo constraints are known
 
-If ledger does not exist and task is too small for one, keep decision in thread and stay brief.
+For a compact task, follow the [task contract](task-contract.md), retain its selector, and record a consequential choice in existing Open Loops or constraints. Do not add an epic Decisions section.
 
 ## Compare Real Options
 
@@ -39,7 +39,7 @@ Check:
 
 ## Ledger Writeback
 
-Append compact block under `## Decisions`:
+For an epic, append a compact block under `## Decisions`:
 
 ```md
 ### YYYY-MM-DD: <decision title>
