@@ -49,6 +49,8 @@ Read the selected task record, relevant AGENTS files and repo state. Use its goa
 
 ### Execution Gate
 
+Inspect requirements, prior decisions, relevant callers, tests and repository conventions before declaring an unknown. Resolve available facts directly; do not ask the user for them. Routine low-risk choices follow established conventions within scope. A remaining product question that changes externally visible behavior, or a costly interface choice, uses Decide before implementing dependent semantics. Keep the selected task or epic pinned and preserve current mode and authority limits; continue independent settled work only when routing permits it.
+
 Before implementing, answer this gate explicitly. If any answer is not a clear yes, stop execution and switch to planning/reconciliation mode instead of coding:
 
 - exactly one milestone or compact task is next

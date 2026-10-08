@@ -275,6 +275,8 @@ Focus planning on:
    - active epic: `active`
 11. Initialize Review with `reviewed-at: not-run`, `result: pending`, and a short note.
 
+Before implementation, inspect relevant callers, tests and existing decisions to resolve available facts. A small-task classification does not settle unanswered product behavior. If a remaining question changes externally visible behavior or an interface choice is costly to reverse, pin the selected work unit, record the precise open question and route through Decide within the current mode. Keep disputed acceptance pending rather than inventing it. Routine clear work proceeds without forced alternatives; settled user decisions remain effective.
+
 ## Decomposition Guidance
 
 When converting a large product doc into epics:
