@@ -427,6 +427,8 @@ def attempt_identity(attempt):
 def initialize(root, ledger, checks, reason, roadmap=None):
     root = root.resolve()
     record = work_unit.load(root, ledger)
+    import artifact_review
+    artifact_review.private_storage(root, record)
     require(nonempty(reason), 'inventory/migration reason required')
     require(type(checks) is list and checks, 'empty inventory')
     ids = [definition(c) for c in checks]
@@ -452,6 +454,8 @@ def initialize(root, ledger, checks, reason, roadmap=None):
 def run_check(root, ledger, check_id, purpose='readiness'):
     root = root.resolve()
     record = work_unit.load(root, ledger)
+    import artifact_review
+    artifact_review.private_storage(root, record)
     require(purpose in PURPOSES, 'invalid evidence purpose')
     with locked(root, ledger):
         expected = read_bytes(safe(root, ledger))
@@ -700,6 +704,11 @@ def assess(root, ledger, *, text=None, owned=None, tree=None):
         current, definitions = inventory(root, ledger, contract)
         work_unit.bind_checks(record, current['checks'], current['roadmap'])
         receipts = validate_history(root, ledger, contract, definitions)
+        import artifact_review
+        artifact_review.private_storage(root, record)
+        for row in artifact_review.rows(record):
+            if row['type'] == 'artifact-only' and row['marker'] == 'x':
+                artifact_review.inventory(root, record, row)
         states = []
         errors = [f'pending verification attempt: {a["check"]}/{a["id"]}' for a in contract['attempts'] if a['status'] == 'pending']
         if errors:

@@ -31,12 +31,16 @@ If the active epic is not truly complete, stop and explain why advancing is prem
 
 When an active epic exists, run bundled `<skill-dir>/scripts/check_reviewed_change_set.py` with its ledger path. Resolve `<skill-dir>` as the loaded `deepdone` directory containing this reference.
 
-Schema-v2 gate must prove:
+For code reviews, the schema-v2 gate must prove:
 
 - private review ref still resolves to expected synthetic commit and tree
 - reviewed paths derived by Git are committed and clean
 - current committed projection equals reviewed tree
 - active ledger and optional roadmap still match captured hashes
+
+For artifact-only reviews, the same helper validates the schema-3 declaration,
+artifact inventory, current receipt chain, unchanged source scope, and development
+evidence. No Git snapshot or commit is required.
 
 Stop on any failure. Schema-v1 or missing manifest is accepted only for already-committed legacy work when entire repository is clean.
 
@@ -143,7 +147,7 @@ If no planning mode exists, perform the same compact checks in normal execution 
 
 1. Locate the roadmap.
 2. Verify the current active epic is complete with latest review result `pass`, or confirm there is no active epic yet.
-3. Prove reviewed Git snapshot is committed and clean, captured development evidence is unchanged, and the complete [verification contract](verification-contract.md) remains valid. Perform this check before intentional ledger/roadmap writes. Clean historical legacy compatibility is not receipt verification; removed new-format evidence cannot use it.
+3. Prove reviewed Git snapshot is committed and clean, or declared artifact-only inventory is current without source changes; prove captured development evidence is unchanged, and the complete [verification contract](verification-contract.md) remains valid. Perform this check before intentional ledger/roadmap writes. Clean historical legacy compatibility is not receipt verification; removed new-format evidence cannot use it.
 4. Mark the completed epic entry `[x]` if needed.
 5. Select the next queued epic whose dependencies are satisfied.
 6. Create exactly one new epic ledger for that epic.
@@ -153,7 +157,7 @@ If no planning mode exists, perform the same compact checks in normal execution 
 10. If no queued epics remain, set:
    - `Active Epic` to `name: none`, `ledger: none`, `state: none`
    - roadmap `Status` to `complete`
-11. After durable roadmap and ledger writes succeed, run the same helper with `--cleanup-after-advance` against completed ledger. This removes only its validated manifest and exact private review ref.
+11. For artifact-only reviews, retain the private manifest and receipts; skip Git-snapshot cleanup. For code reviews, after durable roadmap and ledger writes succeed, run the same helper with `--cleanup-after-advance` against completed ledger. This removes only its validated manifest and exact private review ref.
 12. Return the new active epic and exact next action.
 
 ## Guardrails

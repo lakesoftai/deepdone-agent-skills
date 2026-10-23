@@ -285,7 +285,7 @@ def stage_paths_from_commit(root: Path, source: str, paths: set[str]) -> None:
 
 def build_tree_from_worktree(root: Path, base_head: str, paths: set[str]) -> str:
     if not paths:
-        raise ValueError("review scope contains no dirty version-controlled paths")
+        raise ValueError("review scope contains no dirty version-controlled paths; declare an artifact-only milestone with concrete ignored deliverables and acceptance checks, or correct the code scope")
     with tempfile.TemporaryDirectory(prefix="deepdone-review-index-") as tmp:
         tmp_path = Path(tmp)
         index_path = tmp_path / "index"
@@ -541,6 +541,12 @@ def capture(root: Path, ledger_value: str) -> Path:
 
     entry = latest_review_entry(ledger_text)
     review_id, base_head, manifest_rel, include, exclude, evidence_roles = validate_entry(root, ledger_rel, entry)
+    if entry.get('type') == 'artifact-only':
+        import artifact_review
+        return artifact_review.capture(root, work_unit.load(root, ledger_rel), entry,
+                                       (review_id, base_head, manifest_rel, include, exclude, evidence_roles))
+    if entry.get('type', 'code') != 'code':
+        raise ValueError('unsupported Review type; use code or artifact-only')
     evidence_paths = set(evidence_roles.values())
     records = parse_status(root)
     selected = select_reviewed_records(records, include, exclude, evidence_paths, ledger_rel)
@@ -629,6 +635,9 @@ def main() -> int:
         print(f"Refusing review capture: {exc}", file=sys.stderr)
         return 2
     print(manifest_path.relative_to(root))
+    if manifest.get('kind') == 'artifact-only':
+        print('Captured reviewed artifact inventory; no Git snapshot or commit required')
+        return 0
     print(
         f"Captured {manifest['commit_path_count']} Git paths as {manifest['review_ref']} "
         f"with {len(manifest['evidence'])} evidence files"

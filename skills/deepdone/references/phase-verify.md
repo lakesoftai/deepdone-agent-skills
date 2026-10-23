@@ -108,3 +108,8 @@ Return:
 - pass, fail, or blocked status
 - residual risk
 - exact next action
+
+For declared artifact-only milestones, use the existing `local-data` receipt path
+and the declaration in [Plan](phase-plan.md). Verify every declared root with its
+named required checks; do not introduce tracked placeholders or copy private
+artifacts into Git. Completed artifact acceptance remains required in mixed epics.

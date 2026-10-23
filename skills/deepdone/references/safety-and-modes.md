@@ -102,6 +102,7 @@ User-owned changes remain user-owned.
 - Continue only when active-scope files are distinguishable from unrelated changes.
 - Do not overwrite, discard, stage, or reformat unrelated files.
 - Review records compact active scope, captures exact code in a private Git snapshot, and blocks when ownership is ambiguous.
+- Explicit artifact-only milestones capture an ignored hashed inventory and acceptance receipts instead; they never make private artifacts commit candidates. Current evidence permits completion without a commit.
 - Commit derives exact paths from Git and reproduces only the latest unchanged reviewed tree.
 - Active ledger and optional roadmap remain development evidence, not commit ownership.
 - Direct advance blocks while reviewed code is uncommitted or dirty or development evidence has drifted.

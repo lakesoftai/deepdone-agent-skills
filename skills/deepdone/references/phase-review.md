@@ -68,6 +68,38 @@ Review only active-scope changes. Clearly unrelated files may remain dirty when 
 
 ## Ledger Writeback
 
+For a declared artifact-only milestone, review the actual deliverables and their
+source mappings against acceptance, along with the required local-data receipts.
+Judge sufficiency; a successful trivial command is not proof. Review source scope
+and unrelated dirty work to confirm that no intended code changes are hidden.
+
+Use the ordinary passing entry below, with these additional fields:
+
+```md
+  type: artifact-only
+  milestone: prepare evidence
+  disposition: accepted
+```
+
+The milestone title must exactly match its declaration. Record reviewer findings
+and their disposition in `notes`, including the reviewer context or any independence
+limitation. Set the reviewed milestone `[x]` before capture; keep the epic active
+when later milestones remain. Its Review scope must equal declared `source_scope`.
+After all evidence writes, run the same capture helper. It uses schema 3 for
+artifact-only evidence and creates no Git tree, commit, or ref. The ignored manifest
+contains the full hashed artifact inventory, source scope, milestone identity,
+and ledger/roadmap hashes. The ledger pins acceptance and verification receipts.
+Do not edit these records after capture without renewed verification/review.
+
+Run `check_reviewed_change_set.py --ledger <path>` before consuming this pass or
+transitioning to another milestone. It re-enumerates artifacts and validates
+receipt freshness and unchanged source. A final artifact-only pass completes
+without candidate or commit, including in commit-authorized modes. Set Next Action
+to the next eligible milestone, explicit roadmap Advance, or completion as applicable.
+Keep the manifest after Advance; no Git-ref cleanup applies. If completed code
+milestones exist, use the normal cumulative code review and commit path instead.
+The remaining Git-snapshot instructions in this section apply to code reviews.
+
 For the selected durable work record:
 
 - ensure `## Review` exists after `## Verification Log`

@@ -220,6 +220,40 @@ Initialize review state:
 
 ## Milestone Rules
 
+Declare `type: artifact-only` when the deliverables are concrete ignored local
+files and no Git-managed changes are intended. Omitted type means `code`;
+explicit `type: code` is also valid. A clean worktree alone never selects the
+artifact path. Use an epic milestone, not a compact task, for this path.
+
+```md
+- [ ] prepare evidence
+  - type: artifact-only
+  - acceptance: Evidence images and source mappings pass the presentation checks
+  - artifacts: {"roots":["private/evidence"],"checks":["evidence"],"source_scope":{"include":["src","tests"],"exclude":[]}}
+  - depends on: none
+```
+
+The `artifacts` value is one JSON object on one line. `roots` are literal
+repository-relative files/directories, with no exclusions inside them. Prefer
+directories when additions must be detected. `checks` names required receipt
+checks; at least one must have acceptance text exactly matching this milestone.
+Each artifact root must be an exact `local-data` input of a named required check
+without exclusions. `source_scope` declares the areas in which source changes
+would contradict the artifact-only claim. Inspect ownership before choosing it;
+exclude only demonstrably unrelated work. It must cover all intended source
+areas, even when the checks themselves consume only local data.
+
+Keep artifacts, the ledger, associated roadmap, review manifests, and verification
+storage ignored and untracked. Capture refuses public workflow storage rather
+than copying private data into Git or changing ignore rules automatically.
+Do not invent dummy tracked files to satisfy review. Empty deliverables cannot pass.
+
+In mixed epics, keep completed artifact checks required as code checks are added.
+Artifact-only review can precede code milestones; once code milestones are
+complete, preserve the cumulative code snapshot/commit path for subsequent
+reviews, including reviews of later artifact preparation. No artifact declaration
+may erase outstanding code integration requirements.
+
 - milestones must be independently verifiable
 - milestones must stay within one execution lane
 - order must be explicit

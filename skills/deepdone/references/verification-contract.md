@@ -245,6 +245,30 @@ updated ledger refs require new review. Run normal Advance validation before
 intentional ledger/roadmap transition; cleanup does not repeat freshness checks
 after that transition. Commit authorization and phase/mode budgets are unchanged.
 
+## Artifact-only milestones
+
+The [Plan phase](phase-plan.md) defines explicit artifact-only declarations.
+Use existing schema-1 inventories and receipts with `local-data` inputs. Required
+checks must cover entire declared roots, including new files; no in-root exclusions
+are accepted for the checks proving that coverage. At least one named required
+check binds the milestone's acceptance text exactly. Review judges substantive
+check sufficiency and findings. Never infer success from a file count or exit zero
+alone when acceptance requires more.
+
+The schema-3 artifact review manifest lives in ignored `.deepdone/reviews/` and
+stores `{sha256,entries}` from the same fingerprint mechanism. It contains no
+artifact contents or Git snapshot. Ledger hashes bind milestone declaration,
+acceptance, reviewer notes/disposition, and the full pinned receipt chain.
+Artifacts and workflow storage must be ignored and untracked. Both capture and
+consumption recheck that policy. Symlinks and unsupported inputs still block.
+
+Completed artifact checks cannot be retired or made advisory in later inventory
+revisions. Final code reviews and commits in mixed epics therefore still validate
+their private inputs. Changed definitions require new readiness executions and
+review. Missing, modified, or newly added in-scope artifacts, changed source,
+changed ledger/roadmap, and stale or damaged receipts block the applicable gates.
+Artifact-only completion requires no commit; schema-2 code gates are unchanged.
+
 ## Compact task records
 
 Use `--task .deepdone/tasks/<id>.md` instead of `--ledger` for every action. See [task contract](task-contract.md) for strict metadata and acceptance binding. Inventory/receipt schema 1 and review manifest schema 2 are unchanged; `ledger` and `ledger_path` mean the selected durable work record. Current task acceptance binds to proposed inventories at revision and current inventories at readiness, while old receipt history retains its original definitions. Tasks cannot associate a roadmap or use legacy receipt-free compatibility.

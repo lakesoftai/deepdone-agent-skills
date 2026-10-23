@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """Read-only observations and pure, bounded DeepDone routing decisions."""
-import re
-
 import work_unit as w
 import verification as v
 import capture_reviewed_change_set as snapshot
@@ -15,37 +13,7 @@ ACTIONS = PHASES | {'candidate', 'pr-draft', 'pr-create', 'ci', 'verification-re
 PROTECTED = {'commit', 'pr-create', 'archive', 'push', 'merge', 'deploy'}
 
 
-def milestones(text):
-    """Parse automation's supported subset; legacy display stays permissive."""
-    rows = []
-    for line in w.section(text, 'Milestones').splitlines():
-        if not line.strip():
-            continue
-        match = re.fullmatch(r'- \[([ xX!\-])\] (\S.*?)\s*', line)
-        if match:
-            rows.append({'title': match[2], 'marker': match[1].lower(), 'depends': [], 'acceptance': ''})
-        elif line.startswith('  ') and rows:
-            field = re.fullmatch(r'\s+- (acceptance|depends on):\s*(.+)', line)
-            if field:
-                if field[1] == 'acceptance':
-                    rows[-1]['acceptance'] = field[2]
-                else:
-                    rows[-1]['depends'] = [] if field[2] == 'none' else [s.strip() for s in field[2].split(',')]
-        else:
-            raise ValueError('unsupported milestone structure')
-    names = [r['title'] for r in rows]
-    w.require(rows and len(set(names)) == len(names) and all(r['acceptance'] for r in rows), 'missing/duplicate milestone title or acceptance')
-    w.require(sum(r['marker'] == '-' for r in rows) <= 1, 'multiple active milestones')
-    by_name = {r['title']: r for r in rows}
-    def visit(name, chain):
-        w.require(name in by_name and name not in chain, 'unresolved/cyclic milestone dependency')
-        for dep in by_name[name]['depends']:
-            visit(dep, chain | {name})
-    for row in rows:
-        visit(row['title'], set())
-        if row['marker'] in {'-', 'x'}:
-            w.require(all(by_name[d]['marker'] == 'x' for d in row['depends']), 'milestone contradicts dependency status')
-    return rows
+milestones = w.milestones
 
 
 def next_slice(rows):
@@ -160,6 +128,9 @@ def observe(root, *, task=None, ledger=None, ctx=None):
             return facts
         rows = facts['milestones']
         selected = next_slice(rows) if rows else None
+        artifact_row = selected if selected and selected['type'] == 'artifact-only' else next(
+            (row for row in rows if row['title'] == entry.get('milestone') and row['type'] == 'artifact-only'), None)
+        facts['artifact_only'] = entry.get('type') == 'artifact-only'
         facts['slice'] = selected['title'] if selected else (record['id'] if record['kind'] == 'task' else rows[-1]['title'])
         facts['final'] = record['status'] == 'complete' and (record['kind'] == 'task' or all(r['marker'] == 'x' for r in rows))
         assessment = v.assess(root, path)
@@ -169,6 +140,9 @@ def observe(root, *, task=None, ledger=None, ctx=None):
         if record['kind'] == 'task':
             w.require('scope' not in ctx, 'task scope comes from its record')
             scopes = [record['task']['scope']]
+        elif artifact_row and (selected is artifact_row or 'scope' not in ctx):
+            scope = artifact_row['artifacts']['source_scope']
+            scopes = [{'include': scope['include'], 'exclude': scope['exclude'] + artifact_row['artifacts']['roots']}]
         elif 'scope' in ctx:
             scopes = [ctx['scope']]
         elif inventory:
@@ -186,6 +160,14 @@ def observe(root, *, task=None, ledger=None, ctx=None):
             observed, changed = source_observation(root, record, scope)
             projection.append(observed)
             owned.update(changed)
+        for row in rows:
+            if row['type'] != 'artifact-only' or (row is not selected and row['marker'] != 'x'):
+                continue
+            roots = row['artifacts']['roots']
+            present = [p for p in roots if (root / p).exists()]
+            projection.append({'artifact_milestone': row['title'], 'absent': [p for p in roots if p not in present],
+                               'inventory': v.fingerprint(root, path, {'inputs': [{'path': p, 'role': 'local-data'} for p in present],
+                                                                      'exclusions': []}, record['roadmap'], allow_empty=True)})
         facts['changed'] = bool(owned)
         if inventory:
             assessment = v.assess(root, path, owned=owned)
@@ -196,6 +178,8 @@ def observe(root, *, task=None, ledger=None, ctx=None):
         # Status, receipt references and Review bookkeeping are intentionally not semantic progress.
         facts['initial'] = (not owned and not (contract and contract['attempts']) and
                             len(history) == 1 and entry.get('reviewed-at') == 'not-run' and facts['review'] == 'pending')
+        facts['review_slice'] = (next((row['title'] for row in reversed(rows) if row['marker'] == 'x'), None) if rows else record['id'])
+        facts['blocked_slice'] = bool(selected and selected['marker'] == '!')
         if facts['review'] == 'pass':
             try:
                 dirty, _ = terminal.check(root, path)
@@ -205,6 +189,13 @@ def observe(root, *, task=None, ledger=None, ctx=None):
             if facts['integrated']:
                 facts['review_valid'] = True
             else:
+                if facts['artifact_only']:
+                    try:
+                        terminal.check(root, path)
+                    except (OSError, ValueError) as exc:
+                        facts['review_errors'] = [str(exc)]
+                    facts['review_stale'] = assessment['state'] == 'stale'
+                    return facts
                 validation = commit.validate_reviewed_change_set(root, path, text, None, commit.parse_status_z(root), check_staging=False)
                 facts['review_valid'] = not validation[2]
                 facts['review_errors'] = validation[2]
@@ -212,8 +203,6 @@ def observe(root, *, task=None, ledger=None, ctx=None):
                 facts['commit_errors'] = (['staged_unowned'] if validation[4] else []) + commit.commit_gate_errors(
                     path, record['status'], text, commit.latest_verification_lines(text),
                     commit.review_lines(text), w.section(text, 'Open Loops').splitlines(), root=root)
-        facts['review_slice'] = (next((row['title'] for row in reversed(rows) if row['marker'] == 'x'), None) if rows else record['id'])
-        facts['blocked_slice'] = bool(selected and selected['marker'] == '!')
     except (OSError, ValueError, TypeError, KeyError) as exc:
         facts['errors'].append(str(exc))
     return facts
@@ -333,7 +322,9 @@ def admit(facts, decision, ctx, *, mode='one-step', requested=None, authority=No
     if not stop and action == 'candidate' and ((requested == 'commit' and mode == 'one-step') or mode in {'until-commit', 'end-to-end'}):
         action = 'commit'
     if not stop and decision['state'] == 'complete':
-        if requested in {'pr', 'pr-draft', 'pr-create', 'ci'}:
+        if facts.get('artifact_only') and requested in {'commit', 'candidate'}:
+            stop = 'artifact_only_no_commit'
+        elif requested in {'pr', 'pr-draft', 'pr-create', 'ci'}:
             action = 'pr-draft' if requested == 'pr' else requested
         elif requested in {'advance', 'archive'} and facts['unit']['kind'] == 'epic':
             if requested == 'advance' and not facts.get('roadmap'):

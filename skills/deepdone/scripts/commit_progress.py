@@ -558,6 +558,9 @@ def validate_reviewed_change_set(
             if manifest_rel != normalized_entry_manifest:
                 errors.append("explicit manifest does not match latest Review entry")
     if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+        if manifest.get('schema_version') == 3 or entry.get('type') == 'artifact-only':
+            errors.append('artifact-only review has no commit candidate; validate completion with check_reviewed_change_set.py')
+            return [], all_files, errors, stale, staged_unowned, manifest_rel, manifest_path, set()
         errors.append("reviewed change-set schema version is unsupported")
     if ledger_path and manifest.get("ledger_path") != ledger_path:
         errors.append("reviewed change-set ledger does not match selected ledger")

@@ -80,7 +80,8 @@ Archive <ledger path> after merge/ref <PR URL, merge SHA, or release tag>.
 - **Commit authorization**: Commits only happen in `until-commit`/`end-to-end` modes or on explicit user request. Default is candidate-only.
 - **PR/MR creation authorization**: PR/MR drafts are safe by default. Creation and push require explicit approval.
 - **Archive authorization**: Archive requires explicit current-run user authority. Merge or release evidence never grants authority.
-- **Advance gate**: Reviewed Git snapshot must be committed and clean, and captured ledger or roadmap evidence must remain unchanged. No automatic stash, reset, discard, or abandonment.
+- **Artifact-only milestones**: Explicit declarations bind ignored deliverables to acceptance checks and reviewer disposition. Schema-3 local manifests contain hashed inventories without Git snapshots or commits; completed artifact checks remain required in mixed epics.
+- **Advance gate**: Reviewed Git snapshot must be committed and clean, or a declared artifact-only review must have current inventory/receipt evidence and unchanged source. Captured ledger or roadmap evidence must remain unchanged. No automatic stash, reset, discard, or abandonment.
 
 ## Safety
 

@@ -121,3 +121,8 @@ Return:
 ## Bounded progress resolution
 
 For ambiguous implementation stage, inspect selected requirements, source/diff, milestones and complete evidence, then return a token-bound transient progress resolution (see state-machine.md), or the precise missing fact. Do not ask the user for repository-answerable facts. Preserve earlier outcomes and their consumed budgets. Receipt/Review bookkeeping alone does not require another Sync. Never repeat unchanged Sync without a resolution or blocker.
+
+For artifact-only milestones, inspect the declaration and run the same reviewed-work
+check before consuming a pass. A current schema-3 inventory completes without commit.
+Stale artifacts or receipts require Verify and Review again. Do not route valid
+artifact-only completion to Commit or infer artifact mode from an empty diff.

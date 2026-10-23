@@ -43,7 +43,7 @@ Accept:
 
 Default mode: `one-step`.
 
-Commit modes: `until-commit` and `end-to-end`. They authorize local commit only and stop after commit.
+Commit modes: `until-commit` and `end-to-end`. They authorize local commit only and stop after commit. A declared artifact-only final milestone stops after validated review completion without a commit; see the workflow contract.
 
 A requested phase is a routing preference, not a state or authorization override. If it does not match the required transition, report the required phase and stop unless the selected loop mode independently permits that transition.
 

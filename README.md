@@ -2,6 +2,8 @@
 
 DeepDone is one public skill for agent-driven software work. It supports single-step or bounded end-to-end implementation from planning through a reviewed local commit. PR and archive actions remain separate and explicit.
 
+Explicit artifact-only epic milestones can verify and review ignored private deliverables without a Git snapshot or commit. Their declared inventory and acceptance receipts remain freshness gates, including through later code milestones. See [milestone declarations](skills/deepdone/references/phase-plan.md#milestone-rules).
+
 Small work uses one typed `.deepdone/tasks/<id>.md` record through the same receipt, review and commit gates. Completed tasks stay retained and need explicit selection on a later run; they never advance or archive an epic.
 
 It keeps long work recoverable through one roadmap, one active epic ledger, and narrow internal workflow phases.
@@ -150,7 +152,7 @@ Plan, sync, advance, decide, implement, verify, review, fixup, commit, PR, and a
 - ignored epic ledger and optional roadmap are filesystem-hashed development evidence, never automatic commit candidates
 - manifest stores Git object IDs and path count, not one JSON record per changed file
 - commit harness reproduces only unchanged reviewed tree and preserves unrelated unstaged work
-- reviewed snapshot must be committed and clean before roadmap advance
+- reviewed code snapshot must be committed and clean before roadmap advance; artifact-only completion requires current inventory and receipt evidence
 
 ## License
 

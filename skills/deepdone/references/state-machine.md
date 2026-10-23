@@ -18,17 +18,17 @@ Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed
 - Applies to: `deepdone`, `phase-implement`, `phase-fixup`, `phase-verify`, `phase-review`
 - Evidence: Latest Review entry is `pending`, ledger remains active, and Next Action names verification.
 
-### DD-REVIEW-001: Review captures exact Git snapshot
+### DD-REVIEW-001: Review captures exact deliverables
 
-- Rule: A passing review of dirty work records compact reviewed scope, captures exact version-controlled state as a private Git review ref, and stores its object IDs in a local manifest.
+- Rule: A passing code review records compact reviewed scope, captures exact version-controlled state as a private Git review ref, and stores its object IDs in a local manifest. An explicitly declared artifact-only milestone instead captures its hashed local inventory and pinned acceptance/verification/reviewer evidence without Git objects.
 - Applies to: `phase-review`, `phase-commit`, `phase-advance`, `phase-sync`
-- Evidence: Latest passing Review contains review ID, base HEAD, manifest path, scope, and development-evidence roles; manifest resolves to one unchanged Git commit and tree under `refs/deepdone/reviews/`.
+- Evidence: Latest passing Review contains review ID, base HEAD, manifest path, scope, and development-evidence roles; a code manifest resolves to one unchanged Git commit and tree under `refs/deepdone/reviews/`; an artifact-only manifest re-enumerates exactly the reviewed ignored inventory and validates the receipt chain.
 
 ### DD-EVIDENCE-001: Development state is evidence, not commit ownership
 
 - Rule: Selected task record or active epic ledger and optional epic roadmap are filesystem-hashed development evidence regardless of Git tracking or ignore state; they never become commit candidates merely because review depends on them.
 - Applies to: `phase-review`, `phase-commit`, `phase-advance`, `phase-sync`
-- Evidence: Schema-v2 manifest contains one `ledger` evidence record and optional `roadmap` record, while Git-reviewed paths are derived only from the private review snapshot.
+- Evidence: Schema-v2 code or schema-3 artifact manifest contains one `ledger` evidence record and optional `roadmap` record, while Git-reviewed paths are derived only from the private review snapshot.
 
 ### DD-COMMIT-001: Commit reproduces reviewed Git tree
 
@@ -44,7 +44,7 @@ Invariant IDs are permanent. Do not rename or reuse them. When a rule is removed
 
 ### DD-ADVANCE-001: Uncommitted or drifted reviewed work blocks advance
 
-- Rule: A completed epic cannot advance until reviewed Git state is committed and clean and captured development evidence remains unchanged.
+- Rule: A completed epic cannot advance until reviewed Git state is committed and clean and captured development evidence remains unchanged. Declared artifact-only completion requires a current schema-3 inventory and verification evidence with unchanged declared source; it has no commit requirement.
 - Applies to: `deepdone`, `phase-advance`, `phase-sync`
 - Evidence: Advance gate projects current HEAD over Git-derived reviewed paths, compares it with `review_tree`, checks dirty reviewed paths, and verifies evidence hashes.
 
@@ -111,7 +111,7 @@ Schema-v2 JSON is compact deterministic gate evidence. It stores:
 - normalized include and exclude roots
 - direct filesystem hashes for recognized evidence roles
 
-It never stores a bulk path array. Git diff between `base_head` and `review_ref` is the exact path authority. Manifest schema version is `2`.
+It never stores a bulk path array. Git diff between `base_head` and `review_ref` is the exact path authority. Code manifest schema version is `2`. Artifact-only manifests use schema `3` with `kind: artifact-only`, milestone identity, full `{sha256,entries}` artifact inventory, source scope, base HEAD and development-evidence hashes; they have no review ref/tree/commit. See [Plan](phase-plan.md), [Review](phase-review.md), and the [verification contract](verification-contract.md).
 
 Any behavior-changing implementation or fixup after review makes the previous review stale. Route through verification and review again.
 
@@ -150,7 +150,7 @@ Resolve dependencies in this order:
 4. Failed verification needs analysis or one accepted obvious local repair. Stale readiness needs Verify. Fresh Verify with absent/pending/stale Review needs Review before further implementation.
 5. Applicable failed Review with accepted local findings needs Fixup; consequential or unaccepted findings need Decide. Changed Fixup returns to Verify and Review.
 6. An initial plan with acceptance, initial pending Review, no attempts and no attributable source changes may enter Implement. Otherwise ambiguous progress needs one bounded Sync; inspected incomplete progress may resume Implement.
-7. A valid intermediate epic Review permits the next milestone while epic/roadmap remain active. Only all explicitly complete milestones plus final passing Review permit completion. Final uncommitted work is ready for candidate preparation.
+7. A valid intermediate epic Review permits the next milestone while epic/roadmap remain active. Only all explicitly complete milestones plus final passing Review permit completion. Final uncommitted code work is ready for candidate preparation; validated artifact-only work is complete without a candidate.
 8. Apply requested-phase compatibility, mode budget and original action authority. A mode stop leaves repository readiness intact. Candidate and PR draft need no commit/push/create authority. Actual commit and external lifecycle actions keep their existing gates.
 
 A classification describes repository state. It never grants authorization. A decision about a future milestone does not block safe current Verify.
@@ -192,7 +192,7 @@ Epic automation parses unique top-level milestone titles with `[ ]` queued, `[-]
 | Advance | Activate exactly one queued epic, or complete roadmap |
 | Commit | Stop in `until-commit` and `end-to-end`; never auto-advance |
 
-Commit remains optional as an integration action, but direct advance cannot cross uncommitted or drifted reviewed work. Commit the reviewed snapshot or explicitly abandon it before activating the next epic.
+Commit remains optional as an integration action, but direct advance cannot cross uncommitted or drifted reviewed code. Commit the reviewed code snapshot or explicitly abandon it before activating the next epic. Artifact-only reviews instead require current inventory and verification evidence, without a commit.
 
 ## Work Ownership
 
@@ -224,3 +224,14 @@ Clearly unrelated dirty files may coexist with active work only when active-scop
 ## Retired Invariants
 
 None.
+
+## Artifact-only routing
+
+Declared artifact-only milestones use the same Verify and Review boundaries. A
+validated intermediate pass permits the next eligible milestone. A validated final
+pass is `complete` without candidate or commit, including in `until-commit` and
+`end-to-end`; explicit roadmap Advance still revalidates before state writes.
+Never infer the declaration from a clean worktree. Unrelated dirt remains excluded
+only through inspected source ownership. Completed code milestones retain their
+cumulative snapshot and commit requirements; completed artifact acceptance checks
+remain required in mixed epics. Missing or stale artifact evidence blocks consumption.

@@ -4,6 +4,11 @@ For a selected compact task, apply the [task contract](task-contract.md) and car
 
 ## Purpose
 
+An artifact-only schema-3 review has no commit candidate. Validate completion with
+`check_reviewed_change_set.py --ledger <path>` and stop or follow the next eligible
+milestone. Never synthesize an empty commit. Mixed epics with completed code
+milestones retain the schema-2 cumulative code review and commit requirements.
+
 Prepare or create a focused git commit for completed DeepDone work.
 
 ## Conforms To

@@ -213,7 +213,15 @@ def check(root: Path, ledger_value: str) -> tuple[list[str], list[str]]:
     work_unit.bind_review(record, entry)
     all_dirty = dirty_paths(root)
     ledger_text = (root / ledger_rel).read_text(encoding="utf-8")
-    new_evidence = record["kind"] == "task" or verification.contract_span(ledger_text) is not None or (root / verification.namespace(ledger_rel)).exists()
+    import artifact_review
+    typed_artifacts = any(row['type'] == 'artifact-only' for row in artifact_review.rows(record))
+    new_evidence = typed_artifacts or record["kind"] == "task" or verification.contract_span(ledger_text) is not None or (root / verification.namespace(ledger_rel)).exists()
+    if entry.get('type') == 'artifact-only' or (manifest and manifest.get('schema_version') == 3):
+        import artifact_review
+        if manifest is None:
+            raise ValueError('artifact review manifest is missing; recapture after verification and review')
+        artifact_review.validate(root, record, entry, manifest)
+        return [], []
 
     entry_scope = entry.get("scope")
     schema_v2_entry = (
@@ -290,6 +298,10 @@ def cleanup(root: Path, ledger_value: str, *, require_advanced: bool = False) ->
         raise ValueError("schema-v2 review manifest is required for cleanup")
     if require_advanced and not roadmap_has_advanced(root, ledger_rel):
         raise ValueError("roadmap has not advanced beyond completed ledger")
+    if manifest.get('schema_version') == 3:
+        # Retain private artifact evidence after Advance. The normal pre-Advance
+        # gate validates freshness before intentional ledger/roadmap edits.
+        raise ValueError('artifact review evidence is retained after advance; no Git snapshot cleanup is needed')
     base_head, ref, review_commit, review_tree = validate_manifest_identity(root, ledger_rel, entry, manifest)
     reviewed = changed_paths(root, base_head, review_commit)
     all_dirty = dirty_paths(root)
@@ -331,7 +343,10 @@ def main() -> int:
         if len(dirty) > 20:
             print(f"- ... {len(dirty) - 20} more", file=sys.stderr)
         return 2
-    print(f"Reviewed Git snapshot is committed and clean: {len(reviewed)} paths")
+    if latest_review_entry((root / selected).read_text()).get('type') == 'artifact-only':
+        print('Reviewed artifact inventory is current; no commit required')
+    else:
+        print(f"Reviewed Git snapshot is committed and clean: {len(reviewed)} paths")
     return 0
 
 

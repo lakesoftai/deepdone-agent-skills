@@ -146,6 +146,8 @@ def load(root, path, expected_kind=None, *, text=None):
 
 
 def bind_checks(record, checks, roadmap):
+    import artifact_review
+    artifact_review.bind_checks(record, checks)
     if record['kind'] != 'task':
         return
     require(roadmap is None, 'task cannot have roadmap association')
@@ -229,3 +231,49 @@ def select(root, *, task=None, ledger=None):
     record = candidates[0] if candidates else None
     source = 'none' if not record else 'roadmap-selected' if record['path'] == pointer else 'active-fallback' if active else 'reviewed-complete-fallback'
     return record, source, []
+
+
+def milestones(text):
+    """Parse automation's supported subset; legacy display stays permissive."""
+    rows = []
+    for line in section(text, 'Milestones').splitlines():
+        if not line.strip():
+            continue
+        match = re.fullmatch(r'- \[([ xX!\-])\] (\S.*?)\s*', line)
+        if match:
+            rows.append({'title': match[2], 'marker': match[1].lower(), 'depends': [], 'acceptance': '', 'type': 'code', 'artifacts': None})
+        elif line.startswith('  ') and rows:
+            field = re.fullmatch(r'\s+- (acceptance|depends on|type|artifacts):\s*(.+)', line)
+            if field:
+                if field[1] in {'acceptance', 'type'}:
+                    require(field[1] not in rows[-1].setdefault('_fields', set()), 'duplicate milestone field')
+                    rows[-1]['_fields'].add(field[1])
+                    rows[-1][field[1]] = field[2]
+                elif field[1] == 'artifacts':
+                    require(rows[-1]['artifacts'] is None, 'duplicate artifacts declaration')
+                    rows[-1]['artifacts'] = decode(field[2])
+                else:
+                    rows[-1]['depends'] = [] if field[2] == 'none' else [s.strip() for s in field[2].split(',')]
+        else:
+            raise ValueError('unsupported milestone structure')
+    for row in rows:
+        row.pop('_fields', None)
+        require(row['type'] in {'code', 'artifact-only'}, 'unsupported milestone type; use code or artifact-only')
+        if row['type'] == 'artifact-only':
+            import artifact_review
+            artifact_review.declaration(row['artifacts'])
+        else:
+            require(row['artifacts'] is None, 'artifacts declaration requires type: artifact-only')
+    names = [r['title'] for r in rows]
+    require(rows and len(set(names)) == len(names) and all(r['acceptance'] for r in rows), 'missing/duplicate milestone title or acceptance')
+    require(sum(r['marker'] == '-' for r in rows) <= 1, 'multiple active milestones')
+    by_name = {r['title']: r for r in rows}
+    def visit(name, chain):
+        require(name in by_name and name not in chain, 'unresolved/cyclic milestone dependency')
+        for dep in by_name[name]['depends']:
+            visit(dep, chain | {name})
+    for row in rows:
+        visit(row['title'], set())
+        if row['marker'] in {'-', 'x'}:
+            require(all(by_name[d]['marker'] == 'x' for d in row['depends']), 'milestone contradicts dependency status')
+    return rows
